@@ -23,7 +23,7 @@
 
 ## 💡 What is PingUp?
 
-**PingUp** is a real-time community chat platform that brings people together through organized channels, direct messaging, and shared music experiences. It was built from scratch for a hackathon in under 48 hours using React, Node.js, Socket.IO, and MongoDB.
+**PingUp** is a real-time community chat platform that brings people together through organized channels, direct messaging, and shared music experiences. It was built from scratch using React, Node.js, Socket.IO, and MongoDB.
 
 Think of it as a lightweight, self-hostable Discord — with a clean forest-green aesthetic, a Stranger Things music lounge, and a powerful owner panel to manage your community in real time.
 
