@@ -2335,6 +2335,185 @@ body {
 .msg-toolbar-btn:hover        { background: var(--accent-muted); }
 .msg-toolbar-btn-delete:hover { background: rgba(188,108,37,.18); }
 
+/* ── Edit functionality ── */
+.msg-edited-tag {
+  font-size: .68rem;
+  color: var(--sage);
+  background: rgba(123,158,137,.12);
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.msg-edited-tag:hover {
+  background: rgba(123,158,137,.25);
+  color: var(--sage-hover);
+}
+
+.msg-edit-input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.msg-edit-input {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: .875rem;
+  resize: vertical;
+  min-height: 60px;
+  max-height: 200px;
+  line-height: 1.5;
+}
+.msg-edit-input:focus {
+  outline: none;
+  border-color: var(--accent-light);
+  box-shadow: 0 0 0 2px rgba(74,158,142,.15);
+}
+
+.msg-edit-buttons {
+  display: flex;
+  gap: 6px;
+}
+.msg-edit-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: .8rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all .2s;
+}
+.msg-edit-save {
+  background: var(--accent);
+  color: #fff;
+  flex: 1;
+}
+.msg-edit-save:hover {
+  background: var(--accent-hover);
+}
+.msg-edit-cancel {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  flex: 1;
+}
+.msg-edit-cancel:hover {
+  background: var(--bg-tertiary);
+}
+
+/* ── Edit History Modal ── */
+.msg-edit-history-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.msg-edit-history-modal {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0,0,0,.5);
+}
+.msg-edit-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.msg-edit-history-header h3 {
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  margin: 0;
+}
+.msg-edit-history-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all .2s;
+}
+.msg-edit-history-close:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.msg-edit-history-content {
+  overflow-y: auto;
+  flex: 1;
+  padding: 16px;
+}
+.msg-edit-history-entry {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+}
+.msg-edit-history-entry:last-child {
+  margin-bottom: 0;
+}
+.msg-edit-history-timestamp {
+  font-size: .75rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.msg-edit-history-original,
+.msg-edit-history-edited {
+  margin: 8px 0;
+}
+.msg-edit-history-original strong,
+.msg-edit-history-edited strong {
+  color: var(--text-secondary);
+  font-size: .8rem;
+}
+.msg-edit-history-original p,
+.msg-edit-history-edited p {
+  margin: 4px 0 0 0;
+  color: var(--text-primary);
+  font-size: .85rem;
+  line-height: 1.5;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+}
+.msg-edit-history-editor {
+  margin-top: 8px;
+  font-size: .75rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.msg-edit-history-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 20px;
+  font-size: .9rem;
+}
+
 /* ── Command responses ── */
 .msg-command-resp {
   margin: 4px 0;

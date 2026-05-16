@@ -106,6 +106,11 @@ export default function App() {
         prev.map(m => m.id === id ? { ...m, deleted: true, text: '[message deleted]' } : m)
       )
     );
+    socket.on('message:edited', ({ id, text, editedAt, hasEditHistory }) =>
+      setMessages(prev =>
+        prev.map(m => m.id === id ? { ...m, text, editedAt, hasEditHistory } : m)
+      )
+    );
     socket.on('message:pinned', ({ id, pinnedBy }) => {
       setMessages(prev => prev.map(m => m.id === id ? { ...m, pinned: true } : m));
       setNotifications(prev => [...prev, `📌 Message pinned by ${pinnedBy}`]);
@@ -134,6 +139,9 @@ export default function App() {
     });
     socket.on('error:permission', msg =>
       setCommandResps(prev => [...prev, { type: 'error', text: `⛔ ${msg}` }])
+    );
+    socket.on('error:message', msg =>
+      setCommandResps(prev => [...prev, { type: 'error', text: `⚠️ ${msg}` }])
     );
     socket.on('error:general', msg => console.error('[socket]', msg));
 
