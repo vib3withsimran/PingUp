@@ -45,6 +45,16 @@ function rollRole() {
   return Math.random() < 0.30 ? ROLES.MODERATOR : ROLES.MEMBER;
 }
 
+function safeSocketHandler(socket, eventName, handler, clientMessage = 'Something went wrong.') {
+  return async (...args) => {
+    try {
+      await handler(...args);
+    } catch (err) {
+      console.error(`[socket:${eventName}]`, err);
+      socket.emit('error:general', clientMessage);
+    }
+  };
+}
 // ─── Broadcast helpers ────────────────────────────────────────────
 async function broadcastUserList() {
   const users = await User.find({ online: true });
@@ -636,7 +646,7 @@ io.on('connection', async (socket) => {
   console.log(`[+] ${socket.user.username} (${socket.user.role})`);
 
   // ── Join channel (by name) ─────────────────────────────────────
-  socket.on('room:join', async ({ roomName }) => {
+  socket.on('room:join', safeSocketHandler(socket, 'room:join', async ({ roomName }) => {
     const room = await Room.findOne({ name: roomName });
     if (!room) return socket.emit('error:general', 'Channel not found.');
     if (room.isPrivate && dbUser.role === ROLES.MEMBER) {
@@ -662,10 +672,10 @@ io.on('connection', async (socket) => {
     io.to(roomName).emit('room:notification', {
       text: `${socket.user.username} joined #${roomName}`, type: 'join',
     });
-  });
+  }, 'Failed to join channel.'));
 
   // ── Join channel (by ID) ───────────────────────────────────────
-  socket.on('channel:join', async ({ channelId }) => {
+  socket.on('channel:join', safeSocketHandler(socket, 'channel:join', async ({ channelId }) => {
     const room = await Room.findById(channelId);
     if (!room) return socket.emit('error:general', 'Channel not found.');
     if (room.isPrivate && dbUser.role === ROLES.MEMBER) {
@@ -689,10 +699,10 @@ io.on('connection', async (socket) => {
       })),
       roomSettings: roomToChannel(room),
     });
-  });
+  }, 'Failed to join channel.'));
 
   // ── Send message ───────────────────────────────────────────────
-  socket.on('message:send', async ({ roomName, channelId, text }) => {
+  socket.on('message:send', safeSocketHandler(socket, 'message:send', async ({ roomName, channelId, text }) => {
     const trimmed = text?.trim();
     if (!trimmed) return;
 
@@ -735,7 +745,7 @@ io.on('connection', async (socket) => {
     if (channelId && channelId !== resolvedRoom) {
       io.to(channelId).emit('message:new', payload);
     }
-  });
+  }, 'Message failed to send.'));
 
   // ── Typing ─────────────────────────────────────────────────────
   socket.on('typing:start', ({ roomName, channelId }) => {
@@ -750,9 +760,9 @@ io.on('connection', async (socket) => {
   });
 
   // ── Owner: channel CRUD ────────────────────────────────────────
-  socket.on('channel:create', async ({ categoryId, name, description, emoji }) => {
-    if (!hasPermission(socket.user.role, ROLES.OWNER))
-      return socket.emit('error:permission', 'Admin only.');
+  socket.on('channel:create', safeSocketHandler(socket, 'channel:create', async ({ categoryId, name, description, emoji }) => {
+    if (socket.user.role !== 'owner')
+      return socket.emit('error:permission', 'Owner only.');
     if (!name?.trim()) return;
     const exists = await Room.findOne({ name: name.trim().toLowerCase() });
     if (exists) return socket.emit('error:general', 'Channel name already exists.');
@@ -765,20 +775,20 @@ io.on('connection', async (socket) => {
     });
     await broadcastStructure();
     io.emit('room:notification', { text: `# ${room.name} created`, type: 'system' });
-  });
+  }, 'Failed to create channel.'));
 
-  socket.on('channel:delete', async ({ channelId }) => {
-    if (!hasPermission(socket.user.role, ROLES.OWNER))
-      return socket.emit('error:permission', 'Admin only.');
+  socket.on('channel:delete', safeSocketHandler(socket, 'channel:delete', async ({ channelId }) => {
+    if (socket.user.role !== 'owner')
+      return socket.emit('error:permission', 'Owner only.');
     const room = await Room.findByIdAndDelete(channelId);
     if (!room) return;
     await Message.deleteMany({ roomName: room.name });
     await broadcastStructure();
-  });
+  }, 'Failed to delete channel.'));
 
-  socket.on('channel:rename', async ({ channelId, newName }) => {
-    if (!hasPermission(socket.user.role, ROLES.OWNER))
-      return socket.emit('error:permission', 'Admin only.');
+  socket.on('channel:rename', safeSocketHandler(socket, 'channel:rename', async ({ channelId, newName }) => {
+    if (socket.user.role !== 'owner')
+      return socket.emit('error:permission', 'Owner only.');
     if (!newName?.trim()) return;
     const room = await Room.findByIdAndUpdate(
       channelId,
@@ -786,11 +796,11 @@ io.on('connection', async (socket) => {
       { new: true }
     );
     if (room) await broadcastStructure();
-  });
+  }, 'Failed to rename channel.'));
 
-  socket.on('channel:toggleReadOnly', async ({ channelId }) => {
-    if (!hasPermission(socket.user.role, ROLES.OWNER))
-      return socket.emit('error:permission', 'Admin only.');
+  socket.on('channel:toggleReadOnly', safeSocketHandler(socket, 'channel:toggleReadOnly', async ({ channelId }) => {
+    if (socket.user.role !== 'owner')
+      return socket.emit('error:permission', 'Owner only.');
     const room = await Room.findById(channelId);
     if (!room) return;
     room.isReadOnly = !room.isReadOnly;
@@ -802,11 +812,11 @@ io.on('connection', async (socket) => {
       type: 'success',
       text: `✅ #${room.name} is now ${room.isReadOnly ? 'read-only 🔇' : 'writable ✍️'}`,
     });
-  });
+  }, 'Failed to update channel settings.'));
 
-  socket.on('channel:toggleLock', async ({ channelId }) => {
-    if (!hasPermission(socket.user.role, ROLES.OWNER))
-      return socket.emit('error:permission', 'Admin only.');
+  socket.on('channel:toggleLock', safeSocketHandler(socket, 'channel:toggleLock', async ({ channelId }) => {
+    if (socket.user.role !== 'owner')
+      return socket.emit('error:permission', 'Owner only.');
     const room = await Room.findById(channelId);
     if (!room) return;
     room.isLocked = !room.isLocked;
@@ -818,11 +828,11 @@ io.on('connection', async (socket) => {
       type: 'success',
       text: `✅ #${room.name} is now ${room.isLocked ? 'locked 🔒' : 'unlocked 🔓'}`,
     });
-  });
+  }, 'Failed to update channel settings.'));
 
-  socket.on('channel:togglePrivate', async ({ channelId }) => {
-    if (!hasPermission(socket.user.role, ROLES.OWNER))
-      return socket.emit('error:permission', 'Admin only.');
+  socket.on('channel:togglePrivate', safeSocketHandler(socket, 'channel:togglePrivate', async ({ channelId }) => {
+    if (socket.user.role !== 'owner')
+      return socket.emit('error:permission', 'Owner only.');
     const room = await Room.findById(channelId);
     if (!room) return;
     room.isPrivate = !room.isPrivate;
@@ -832,11 +842,11 @@ io.on('connection', async (socket) => {
       type: 'success',
       text: `✅ #${room.name} is now ${room.isPrivate ? 'private 👁️' : 'public 🌐'}`,
     });
-  });
+  }, 'Failed to update channel settings.'));
 
   // ── Pin / delete message ───────────────────────────────────────
-  socket.on('message:pin', async ({ channelId, roomName: rName, messageId }) => {
-    if (!hasPermission(socket.user.role, ROLES.MODERATOR))
+  socket.on('message:pin', safeSocketHandler(socket, 'message:pin', async ({ channelId, roomName: rName, messageId }) => {
+    if (!['owner', 'moderator'].includes(socket.user.role))
       return socket.emit('error:permission', 'Moderators only.');
     const query = channelId ? { _id: channelId } : { name: rName };
     const room = await Room.findOne(query);
@@ -860,10 +870,10 @@ io.on('connection', async (socket) => {
         username: msg.username, pinnedBy: socket.user.username,
       });
     }
-  });
+  }, 'Failed to pin message.'));
 
-  socket.on('message:delete', async ({ channelId, roomName: rName, messageId }) => {
-    if (!hasPermission(socket.user.role, ROLES.MODERATOR))
+  socket.on('message:delete', safeSocketHandler(socket, 'message:delete', async ({ channelId, roomName: rName, messageId }) => {
+    if (!['owner', 'moderator'].includes(socket.user.role))
       return socket.emit('error:permission', 'Moderators only.');
     const msg = await Message.findByIdAndUpdate(
       messageId, { deleted: true, text: '[message deleted]' }, { new: true }
@@ -871,12 +881,12 @@ io.on('connection', async (socket) => {
     if (!msg) return;
     const bc = channelId ? io.to(channelId) : io.to(rName);
     bc.emit('message:deleted', { id: messageId });
-  });
+  }, 'Failed to delete message.'));
 
   // ── Category CRUD ──────────────────────────────────────────────
-  socket.on('category:create', async ({ name }) => {
-    if (!hasPermission(socket.user.role, ROLES.OWNER))
-      return socket.emit('error:permission', 'Admin only.');
+  socket.on('category:create', safeSocketHandler(socket, 'category:create', async ({ name }) => {
+    if (socket.user.role !== 'owner')
+      return socket.emit('error:permission', 'Owner only.');
     if (!name?.trim()) return;
     await Room.create({
       name: `${name.trim().toLowerCase().replace(/\s+/g, '-')}-general`,
@@ -887,20 +897,20 @@ io.on('connection', async (socket) => {
     });
     await broadcastStructure();
     io.emit('room:notification', { text: `📁 Category "${name}" created`, type: 'system' });
-  });
+  }, 'Failed to create category.'));
 
-  socket.on('category:delete', async ({ categoryId }) => {
-    if (!hasPermission(socket.user.role, ROLES.OWNER))
-      return socket.emit('error:permission', 'Admin only.');
+  socket.on('category:delete', safeSocketHandler(socket, 'category:delete', async ({ categoryId }) => {
+    if (socket.user.role !== 'owner')
+      return socket.emit('error:permission', 'Owner only.');
     await Room.deleteMany({ category: categoryId });
     await broadcastStructure();
-  });
+  }, 'Failed to delete category.'));
 
   // ── User management ────────────────────────────────────────────
-  socket.on('user:setrole', async ({ targetId, role }) => {
-    if (!hasPermission(socket.user.role, ROLES.OWNER))
-      return socket.emit('error:permission', 'Admin only.');
-    if (![ROLES.MEMBER, ROLES.MODERATOR].includes(role)) return;
+  socket.on('user:setrole', safeSocketHandler(socket, 'user:setrole', async ({ targetId, role }) => {
+    if (socket.user.role !== 'owner')
+      return socket.emit('error:permission', 'Owner only.');
+    if (!['member', 'moderator'].includes(role)) return;
     const target = await User.findById(targetId);
     if (!target || target.role === ROLES.OWNER) return;
     target.role = role;
@@ -909,21 +919,21 @@ io.on('connection', async (socket) => {
     if (ls) { ls.user.role = role; ls.emit('role:updated', { role }); }
     await broadcastUserList();
     io.emit('room:notification', { text: `🔰 ${target.username} → ${role}`, type: 'system' });
-  });
+  }, 'Failed to update user role.'));
 
-  socket.on('user:kick', async ({ targetId }) => {
-    if (!hasPermission(socket.user.role, ROLES.MODERATOR))
+  socket.on('user:kick', safeSocketHandler(socket, 'user:kick', async ({ targetId }) => {
+    if (!['owner', 'moderator'].includes(socket.user.role))
       return socket.emit('error:permission', 'Insufficient permissions.');
     const target = await User.findById(targetId);
     if (!target || target.role === ROLES.OWNER) return;
     const ts = [...io.sockets.sockets.values()].find(s => s.user?.id === targetId);
     if (ts) { ts.emit('kicked', { by: socket.user.username }); ts.disconnect(true); }
     io.emit('room:notification', { text: `👢 ${target.username} kicked`, type: 'system' });
-  });
+  }, 'Failed to kick user.'));
 
-  socket.on('user:ban', async ({ targetId }) => {
-    if (!hasPermission(socket.user.role, ROLES.OWNER))
-      return socket.emit('error:permission', 'Admin only.');
+  socket.on('user:ban', safeSocketHandler(socket, 'user:ban', async ({ targetId }) => {
+    if (socket.user.role !== 'owner')
+      return socket.emit('error:permission', 'Owner only.');
     const target = await User.findById(targetId);
     if (!target || target.role === ROLES.OWNER) return;
     target.banned = true;
@@ -931,10 +941,10 @@ io.on('connection', async (socket) => {
     const ts = [...io.sockets.sockets.values()].find(s => s.user?.id === targetId);
     if (ts) { ts.emit('kicked', { by: `${socket.user.username} (banned)` }); ts.disconnect(true); }
     io.emit('room:notification', { text: `🔨 ${target.username} banned`, type: 'system' });
-  });
+  }, 'Failed to ban user.'));
 
   // ── Voice channel ──────────────────────────────────────────────
-  socket.on('voice:join', async ({ channelId, channelName }) => {
+  socket.on('voice:join', safeSocketHandler(socket, 'voice:join', async ({ channelId, channelName }) => {
     socket.join(`voice:${channelId}`);
     socket.currentVoice = channelId;
     io.to(`voice:${channelId}`).emit('voice:joined', {
@@ -951,7 +961,7 @@ io.on('connection', async (socket) => {
     io.emit('room:notification', {
       text: `🎧 ${socket.user.username} joined the music lounge`, type: 'system',
     });
-  });
+  }, 'Failed to join voice channel.'));
 
   socket.on('voice:leave', ({ channelId }) => {
     socket.leave(`voice:${channelId}`);
@@ -960,7 +970,7 @@ io.on('connection', async (socket) => {
   });
 
   // ── DMs ────────────────────────────────────────────────────────
-  socket.on('dm:join', async ({ otherUserId }) => {
+  socket.on('dm:join', safeSocketHandler(socket, 'dm:join', async ({ otherUserId }) => {
     const convId = [socket.user.id, otherUserId].sort().join('_');
     socket.join(`dm:${convId}`);
     socket.currentDM = convId;
@@ -970,9 +980,9 @@ io.on('connection', async (socket) => {
     );
     const otherSocket = [...io.sockets.sockets.values()].find(s => s.user?.id === otherUserId);
     if (otherSocket) otherSocket.emit('dm:read', { conversationId: convId });
-  });
+  }, 'Failed to open direct message.'));
 
-  socket.on('dm:send', async ({ toUserId, text }) => {
+  socket.on('dm:send', safeSocketHandler(socket, 'dm:send', async ({ toUserId, text }) => {
     const trimmed = text?.trim();
     if (!trimmed) return;
     const toUser = await User.findById(toUserId);
@@ -1008,7 +1018,7 @@ io.on('connection', async (socket) => {
         preview: trimmed.slice(0, 60),
       });
     }
-  });
+  }, 'Direct message failed to send.'));
 
   socket.on('dm:typing:start', ({ toUserId }) => {
     const convId = [socket.user.id, toUserId].sort().join('_');
@@ -1020,7 +1030,7 @@ io.on('connection', async (socket) => {
   });
 
   // ── Disconnect ─────────────────────────────────────────────────
-  socket.on('disconnect', async () => {
+  socket.on('disconnect', safeSocketHandler(socket, 'disconnect', async () => {
     await User.findByIdAndUpdate(socket.user.id, { online: false, socketId: null });
 
     // Notify text channel
@@ -1040,7 +1050,7 @@ io.on('connection', async (socket) => {
 
     await broadcastUserList();
     console.log(`[-] ${socket.user.username}`);
-  });
+  }, 'Failed to clean up disconnected user.'));
 });
 
 // ─── Connect & Start ──────────────────────────────────────────────
