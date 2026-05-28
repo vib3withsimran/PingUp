@@ -254,6 +254,8 @@ app.put('/api/profile', async (req, res) => {
         if (err?.code === 11000 && err?.keyPattern?.username) {
            return res.status(409).json({ error: 'Username already taken.' });
         }
+        console.error(err);
+        return res.status(500).json({ error: 'Server error.' });
     }
 });
 
