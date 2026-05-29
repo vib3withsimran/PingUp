@@ -781,9 +781,9 @@ io.on('connection', async (socket) => {
                 const payload = {
                     id: msgId.toString(), userId: socket.user.id,
                     username: socket.user.username, role: freshUser.role,
-                    text: trimmed, timestamp: msg.createdAt, deleted: false, pinned: false,
-                    parentMessageId: msg.parentMessageId,
-                    replyCount: msg.replyCount,
+                    text: trimmed, timestamp: new Date(), deleted: false, pinned: false,
+                    parentMessageId: parentMessageId || null,
+                    replyCount: 0,
                 };
 
                 io.to(resolvedRoom).emit('message:new', payload);
