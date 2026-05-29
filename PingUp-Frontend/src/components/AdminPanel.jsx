@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getApiUrl } from '../api';
 
 export default function AdminPanel({ currentUser, socket, categories, onlineUsers, token, onClose }) {
   const [tab,         setTab]         = useState('channels'); // 'channels' | 'users' | 'roles'
@@ -12,7 +13,7 @@ export default function AdminPanel({ currentUser, socket, categories, onlineUser
   useEffect(() => {
     if (tab !== 'users' && tab !== 'roles') return;
     setLoadingUsers(true);
-    fetch('https://pingup-backend-1.onrender.com/api/users', {
+    fetch(getApiUrl('/api/users'), {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())

@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
+import { getApiUrl } from '../api';
 
 export default function DMList({ currentUser, token, onlineUsers, onOpenDM, activeDMId, dmNotifications }) {
   const [conversations, setConversations] = useState([]);
 
   useEffect(() => {
     if (!token) return;
-    fetch('https://pingup-backend-1.onrender.com/api/dm', {
+    fetch(getApiUrl('/api/dm'), {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
@@ -16,7 +17,7 @@ export default function DMList({ currentUser, token, onlineUsers, onOpenDM, acti
   // Refresh list when a new DM notification arrives
   useEffect(() => {
     if (!dmNotifications.length || !token) return;
-    fetch('https://pingup-backend-1.onrender.com/api/dm', {
+    fetch(getApiUrl('/api/dm'), {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())

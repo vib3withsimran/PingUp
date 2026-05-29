@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getApiUrl } from '../api';
 
 export default function Login({ onLogin, onSwitch }) {
   const [email, setEmail] = useState('');
@@ -10,7 +11,7 @@ export default function Login({ onLogin, onSwitch }) {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
-      const res = await fetch('https://pingup-backend-1.onrender.com/api/login', {
+      const res = await fetch(getApiUrl('/api/login'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: email.trim(), password }),
       });

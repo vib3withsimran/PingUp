@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, } from 'react';
+import { getApiUrl } from '../api';
 
 export default function DMChat({ currentUser, otherUser, token, socket, onClose }) {
   const [messages, setMessages]       = useState([]);
@@ -12,7 +13,7 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
   useEffect(() => {
     if (!otherUser || !token) return;
 
-    fetch(`https://pingup-backend-1.onrender.com/api/dm/${otherUser.id}`, {
+    fetch(getApiUrl(`/api/dm/${otherUser.id}`), {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())

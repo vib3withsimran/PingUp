@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getApiUrl } from '../api';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -40,7 +41,7 @@ export default function Register({ onLogin, onSwitch }) {
     }
     setLoading(true);
     try {
-      const res = await fetch('https://pingup-backend-1.onrender.com/api/register', {
+      const res = await fetch(getApiUrl('/api/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

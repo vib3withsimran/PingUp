@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getApiUrl } from '../api';
 
 const ROLE_ORDER = { owner: 0, moderator: 1, member: 2 };
 
@@ -31,7 +32,7 @@ export default function UserPanel({
   // ── Fetch ALL registered users once ───────────────────────────
   useEffect(() => {
     if (!token) return;
-    fetch('https://pingup-backend-1.onrender.com/api/users', {
+    fetch(getApiUrl('/api/users'), {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())
