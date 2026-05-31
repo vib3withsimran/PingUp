@@ -194,7 +194,7 @@ app.post('/api/register', async (req, res) => {
         const token = generateToken(user);
         res.status(201).json({
             token,
-            user: user.toSafeObject(),
+            user: user.toPrivateProfile(),
             roleMessage: isFirst
                 ? '👑 You are the ADMIN — full system control granted.'
                 : '👋 Welcome! You joined as a member.',
@@ -218,7 +218,7 @@ app.post('/api/login', async (req, res) => {
         user.loginCount += 1;
         await user.save();
         const token = generateToken(user);
-        res.json({ token, user: user.toSafeObject() });
+        res.json({ token, user: user.toPrivateProfile() });
     } catch (err) {
         res.status(500).json({ error: 'Server error.' });
     }
@@ -326,7 +326,7 @@ app.put('/api/profile', async (req, res) => {
           runValidators: true
         });
         if (!user) return res.status(404).json({ error: 'User not found.' });
-        res.json({ user: user.toSafeObject() });
+        res.json({ user: user.toPrivateProfile() });
     }catch (err) {
         if (err?.code === 11000 && err?.keyPattern?.username) {
            return res.status(409).json({ error: 'Username already taken.' });
@@ -1402,15 +1402,25 @@ replyCount: 0, imageUrl: imageUrl || null,
 
             const convId = [toUserId, socket.user.id].sort().join('_');
 
-            const msg = await DirectMessage.create({
-                conversationId: convId,
-                participants: [socket.user.id, toUserId],
-                senderId: socket.user.id,
-                senderUsername: socket.user.username,
-                senderRole: socket.user.role,
-                text,
-                clientId
-            })
+            let msg;
+            try {
+                msg = await DirectMessage.create({
+                    conversationId: convId,
+                    participants: [socket.user.id, toUserId],
+                    senderId: socket.user.id,
+                    senderUsername: socket.user.username,
+                    senderRole: socket.user.role,
+                    text,
+                    clientId
+                });
+            } catch (createErr) {
+                if (createErr.code === 11000 || createErr.name === 'MongoError' || createErr.name === 'MongoServerError') {
+                    msg = await DirectMessage.findOne({ clientId });
+                    if (!msg) throw createErr;
+                } else {
+                    throw createErr;
+                }
+            }
 
             const payload = {
                 id: msg._id.toString(),
@@ -1423,7 +1433,7 @@ replyCount: 0, imageUrl: imageUrl || null,
                 clientId
             }
 
-            io.to(convId).emit('dm:message', payload);
+            io.to(`dm:${convId}`).emit('dm:message', payload);
 
             if (typeof callback === 'function') {
                 callback({ status: 'success', id: msg._id.toString() });

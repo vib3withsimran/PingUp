@@ -53,7 +53,7 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
       socket.off('dm:typing', onTyping);
       socket.off('dm:read', onRead);
     };
-  }, [otherUser?.id, currentUser.username, socket, token]); // Added missing dependencies
+  }, [otherUser?.id, currentUser?.username, socket, token]); // Added missing dependencies
 
   // Auto scroll
   useEffect(() => {

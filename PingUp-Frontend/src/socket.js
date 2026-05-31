@@ -18,7 +18,7 @@ export function getSocket(token) {
       const proc = [...queue];
       queue = [];
       proc.forEach(item => {
-        emitWithRetry(item.event, item.payload, item.callback, item.attempts);
+        emitWithRetry(item.event, item.payload, item.cb, item.att);
       })
     })
   }
@@ -33,10 +33,11 @@ export function disconnectSocket() {
   }
 }
 
-export function emitWithRetry(event, payload, cb, att = 0) {
-  const max_r = 5;
-  const timer = 1000;
+const MAX_RETRIES = 5;
+const BACKOFF_BASE_MS = 1000;
+const ACK_TIMEOUT_MS = 5000;
 
+export function emitWithRetry(event, payload, cb, att = 0) {
   if (!socket || !socket.connected) {
     console.warn(`Socket disconnected. Queueing event: ${event}`);
     queue.push({ event, payload, cb, att });
@@ -44,11 +45,11 @@ export function emitWithRetry(event, payload, cb, att = 0) {
     return;
   }
 
-  socket.timeout(5000).emit(event, payload, (err, res) => {
+  socket.timeout(ACK_TIMEOUT_MS).emit(event, payload, (err, res) => {
     if (err) {
       console.error(`Error emitting ${event}:`, err);
-      if (att < max_r) {
-        const delay = timer * Math.pow(2, att);
+      if (att < MAX_RETRIES) {
+        const delay = BACKOFF_BASE_MS * Math.pow(2, att);
         console.log(`Retrying ${event} in ${delay}ms... (Attempt ${att + 1})`);
 
         setTimeout(() => {

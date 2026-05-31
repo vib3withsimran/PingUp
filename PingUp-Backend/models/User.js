@@ -11,9 +11,27 @@ const userSchema = new mongoose.Schema({
     enum: ['owner', 'moderator', 'member'],
     default: 'member',
   },
-  email: { type: String, default: '' },
+  email: { 
+    type: String, 
+    default: '',
+    validate: {
+      validator: function(v) {
+        return v === '' || /^\S+@\S+\.\S+$/.test(v);
+      },
+      message: 'Please enter a valid email address.'
+    }
+  },
   displayName: { type: String, default: '' },
-  phone: { type: String, default: '' },
+  phone: { 
+    type: String, 
+    default: '',
+    validate: {
+      validator: function(v) {
+        return v === '' || /^\+?[0-9\-\s()]{7,20}$/.test(v);
+      },
+      message: 'Please enter a valid phone number.'
+    }
+  },
   online: { type: Boolean, default: false },
   socketId: { type: String, default: null },
   isFirst: { type: Boolean, default: false }, // true = first ever user (owner)
@@ -31,8 +49,20 @@ userSchema.methods.comparePassword = function (plain) {
   return bcrypt.compare(plain, this.password);
 };
 
-// Strip sensitive fields
+// Strip sensitive fields for public broadcast
 userSchema.methods.toSafeObject = function () {
+  return {
+    id: this._id.toString(),
+    username: this.username,
+    displayName: this.displayName || this.username,
+    role: this.role,
+    online: this.online,
+    isFirst: this.isFirst,
+  };
+};
+
+// Full profile for the authenticated user
+userSchema.methods.toPrivateProfile = function () {
   return {
     id: this._id.toString(),
     username: this.username,
