@@ -32,6 +32,7 @@ export default function DMSidebar({
   onOpenProfile,
   onShowFriends,
   onOpenAdmin,       // ← new prop
+  allowUserChannelCreation,
 }) {
   const [search,          setSearch]          = useState('');
   const [muted,           setMuted]           = useState(false);
@@ -46,6 +47,7 @@ export default function DMSidebar({
 
   const isOwner = currentUser?.role === 'owner';
   const isMod   = ['owner', 'moderator'].includes(currentUser?.role);
+  const canCreateChannel = isOwner || allowUserChannelCreation;
 
   // ── Derive display list ─────────────────────────────────────────
   const displayCategories = (() => {
@@ -182,7 +184,7 @@ export default function DMSidebar({
               <span className="dm-cat-arrow">{collapsed[cat.id] ? '▶' : '▼'}</span>
               <span className="dm-cat-label">{cat.name}</span>
 
-              {isOwner && (
+              {canCreateChannel && (
                 <div className="dm-cat-owner-btns">
                   <button
                     className="dm-cat-icon-btn"
@@ -202,7 +204,7 @@ export default function DMSidebar({
             </div>
 
             {/* New channel form */}
-            {isOwner && showNewChannel === cat.id && (
+            {canCreateChannel && showNewChannel === cat.id && (
               <form
                 className="dm-new-channel-form"
                 onSubmit={e => handleCreateChannel(e, cat.id)}

@@ -44,3 +44,13 @@ If you are new to Git, here are the most common commands you'll need:
 
 Refer to the [README.md](README.md) for detailed setup instructions for both Frontend and Backend.
 
+To ensure a smooth workflow and respect everyone's time, please follow these steps before writing code:
+
+### For working on any issue:
+To ensure a smooth workflow and respect everyone's time, please follow these steps before writing any code:
+
+1.Find or Create an Issue: If you see an open issue, leave a comment asking to be assigned. If you have a new idea or found a bug, create a new issue first and ask to work on it!
+2.Wait for Approval: Wait for a maintainer to approve the issue and officially assign you to it.
+3.Submit your PR: Once assigned, you can start coding and submit your Pull Request.
+Note: Please do not submit Pull Requests for issues that have not been assigned to you
+

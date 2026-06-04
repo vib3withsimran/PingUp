@@ -423,6 +423,8 @@ The Music Lounge overrides these with **per-track dynamic gradients** based on t
 
 ---
 
+NOTE: For admin login, the username : josh and password : 1234
+
 ## 📄 License
 
 This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.

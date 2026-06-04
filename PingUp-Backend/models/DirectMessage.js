@@ -11,6 +11,7 @@ const directMessageSchema = new mongoose.Schema({
   text:           { type: String, required: true },
   deleted:        { type: Boolean, default: false },
   read:           { type: Boolean, default: false },
+  clientId:       { type: String, sparse: true, unique: true },
 }, { timestamps: true });
 
 module.exports = mongoose.model('DirectMessage', directMessageSchema);

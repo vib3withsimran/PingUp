@@ -24,3 +24,5 @@ coverage/
 .DS_Store
 .vscode/
 .idea/
+uploads/
+/uploads/

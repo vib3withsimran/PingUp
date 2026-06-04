@@ -19,18 +19,29 @@ const messageQueue = new Queue(queueName, {
 
 // Setup Worker to process queue
 const messageWorker = new Worker(queueName, async (job) => {
-    const { _id, roomName, userId, username, role, text, parentMessageId } = job.data;
+    const { _id, roomName, userId, username, role, text, parentMessageId, imageUrl } = job.data;
     
     try {
-        const msg = await Message.create({
-            _id,
-            roomName,
-            userId,
-            username,
-            role,
-            text,
-            parentMessageId
-        });
+        let msg;
+        try {
+            msg = await Message.create({
+                _id,
+                roomName,
+                userId,
+                username,
+                role,
+                text,
+                parentMessageId,
+                imageUrl
+            });
+        } catch (createErr) {
+            if (createErr.code === 11000 || createErr.name === 'MongoError' || createErr.name === 'MongoServerError') {
+                msg = await Message.findById(_id);
+                if (!msg) throw createErr;
+            } else {
+                throw createErr;
+            }
+        }
 
         if (parentMessageId) {
             await Message.findByIdAndUpdate(

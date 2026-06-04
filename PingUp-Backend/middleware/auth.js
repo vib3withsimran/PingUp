@@ -5,10 +5,14 @@ const User = require('../models/User');
 
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret || jwtSecret.trim().length === 0) {
-  throw new Error("JWT_SECRET is not defined in environment variables");
+  if (process.env.NODE_ENV === 'production') {
+    console.error('FATAL: JWT_SECRET environment variable is required in production.');
+    process.exit(1);
+  }
+  console.warn('WARNING: JWT_SECRET is not defined. Falling back to default development secret.');
 }
 
-const JWT_SECRET = jwtSecret.trim();
+const JWT_SECRET = (jwtSecret && jwtSecret.trim()) || 'internal_network_secret_2024';
 
 function generateToken(user) {
   return jwt.sign(

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FiEye, FiEyeOff } from "react-icons/fi";
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -8,6 +9,8 @@ const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 const YEARS = Array.from({ length: 100 }, (_, i) => new Date().getFullYear() - i);
 
 export default function Register({ onLogin, onSwitch }) {
+  const API_URL = import.meta.env.VITE_API_URL;
+  console.log(API_URL);
   const [form, setForm] = useState({
     email: '',
     displayName: '',
@@ -21,6 +24,7 @@ export default function Register({ onLogin, onSwitch }) {
   const [error, setError] = useState('');
   const [diceMsg, setDiceMsg] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   function handleChange(e) {
     const { name, value, type, checked } = e.target;
@@ -40,7 +44,7 @@ export default function Register({ onLogin, onSwitch }) {
     }
     setLoading(true);
     try {
-      const res = await fetch('https://pingup-backend-1.onrender.com/api/register', {
+      const res = await fetch(`${API_URL}/api/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -257,11 +261,21 @@ export default function Register({ onLogin, onSwitch }) {
 
                 <input
                   name="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={form.password}
                   onChange={handleChange}
                   required
                 />
+                <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="auth-eye"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-pressed={showPassword}
+              >
+                {showPassword ? ( <FiEyeOff size={18} style={{ color: "var(--text-secondary)" }} />) : (
+                  <FiEye size={18} style={{ color: "var(--text-secondary)" }} />)}
+              </button>
               </div>
 
               <div className="reg-field">
