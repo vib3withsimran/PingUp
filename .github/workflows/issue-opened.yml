@@ -1,0 +1,26 @@
+name: Issue Opened Bot
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  welcome-issue:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Create Issue Welcome Comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          body: |
+            ## 👋 Thanks for opening this issue!
+            
+            Hey @${{ github.event.issue.user.login }}! 
+            
+            **What happens next?**
+            - A maintainer will review your issue shortly.
+            - Please do **not** open a Pull Request until a maintainer officially assigns this issue to you!
+            - If you have any additional context, screenshots, or error logs, please attach them
+            

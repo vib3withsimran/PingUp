@@ -1,0 +1,28 @@
+name: Issue Assignment Bot
+
+on:
+  issues:
+    types: [assigned]
+
+jobs:
+  welcome-assignee:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Create Welcome Comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          body: |
+            ## 🚀 You're Good to Go!
+
+            > [!IMPORTANT]
+            > **Work is officially approved.** Please read everything below before you start.
+
+            Hey @${{ github.event.assignee.login }}! 🎉 This issue has been officially assigned to you by the maintainer team.
+
+            📋 **Before you start:**
+            - **Branch:** Please create a new branch for your work.
+            - **PR Link:** When submitting your Pull Request, make sure to include `Closes #${{ github.event.issue.number }}` in the PR description so this issue closes automatically.
+

@@ -1,0 +1,30 @@
+name: PR Welcome Bot
+
+on:
+  pull_request_target:
+    types: [opened]
+
+jobs:
+  welcome-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Create PR Welcome Comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ## 🎉 Thank you for your Pull Request!
+            
+            > [!TIP]
+            > **CodeRabbit AI is reviewing your code.** Please give it a few minutes to complete its analysis!
+            
+            Hey @${{ github.event.pull_request.user.login }}! Thank you for contributing to PingUp. 🚀
+            
+            **While you wait for a maintainer to review your code, please ensure:**
+            - You have linked the issue this PR solves in the description (e.g., `Closes #123`).
+            - You haven't accidentally committed your `node_modules` folder or any `.env` secrets!
+            - You have resolved any merge conflicts with the `main` branch.
+            
+            A maintainer will review your changes shortly.
