@@ -27,7 +27,7 @@ const User = require('./models/User');
 const Room = require('./models/Room');
 const Message = require('./models/Message');
 const DirectMessage = require('./models/DirectMessage');
-const { generateToken, socketAuthMiddleware, verifyToken, generateRefreshToken } = require('./middleware/auth');
+const { generateToken, socketAuthMiddleware, verifyToken, generateRefreshToken, verifyRefreshToken } = require('./middleware/auth');
 const { ROLES, hasPermission } = require('./data/store'); // <-- IMPORTED WEIGHT SYSTEM
 
 const MAX_MESSAGE_LENGTH = 2000;
@@ -249,20 +249,25 @@ app.post('/api/login', async (req, res) => {
 
 // ─── Refresh Route ────────────────────────────────────────────────
 app.post('/api/refresh', async (req, res) => {
-    const { refreshToken } = req.body;
+    const refreshToken =
+        req.body && typeof req.body === 'object' ? req.body.refreshToken : undefined;
 
-    if (!refreshToken) {
-        return res.status(401).json({
-            error: 'Refresh token required'
+    // Strict validation: refreshToken must exist and be a primitive string.
+    // This blocks NoSQL Query Object injection (e.g. passing { $ne: null }).
+    if (!refreshToken || typeof refreshToken !== 'string') {
+        return res.status(400).json({
+            error: 'Invalid refresh token format.'
+        });
+    }
+
+    const decoded = verifyRefreshToken(refreshToken);
+    if (!decoded) {
+        return res.status(403).json({
+            error: 'Invalid or expired refresh token'
         });
     }
 
     try {
-        const decoded = jwt.verify(
-            refreshToken,
-            process.env.REFRESH_SECRET
-        );
-
         const user = await User.findById(decoded.id);
 
         if (!user || user.refreshToken !== refreshToken) {
@@ -272,12 +277,11 @@ app.post('/api/refresh', async (req, res) => {
         }
 
         const accessToken = generateToken(user);
-
         res.json({ accessToken });
 
     } catch (err) {
-        res.status(403).json({
-            error: 'Invalid or expired refresh token'
+        res.status(500).json({
+            error: 'Server error.'
         });
     }
 });
@@ -285,11 +289,14 @@ app.post('/api/refresh', async (req, res) => {
 // ─── Logout ────────────────────────────────────────────────
 app.post('/api/logout', async (req, res) => {
     try {
-        const { refreshToken } = req.body;
+        const refreshToken =
+            req.body && typeof req.body === 'object' ? req.body.refreshToken : undefined;
         
-        if (!refreshToken) {
+        // Strict validation: refreshToken must exist and be a primitive string.
+        // Bypassing this with a query object ({ $ne: null }) could match unintended users.
+        if (!refreshToken || typeof refreshToken !== 'string') {
             return res.status(400).json({
-                error: 'Refresh token required'
+                error: 'Invalid refresh token format.'
             });
         }
 
