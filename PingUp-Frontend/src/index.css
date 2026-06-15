@@ -7431,3 +7431,88 @@ body {
   border-color: var(--accent);
   transform: translateY(-1px);
 }
+
+.msg-pinned-time {
+  display: block;
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
+  margin-bottom: 6px;
+}
+
+.msg-pinned-empty {
+  text-align: center;
+  padding: 20px;
+  color: #999;
+}
+
+.msg-pinned-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 9998;
+}
+
+.msg-pinned-toolbar {
+  padding: 10px;
+}
+
+.msg-pinned-toggle-btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.msg-pinned-sidebar {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  width: min(320px, calc(100vw - 40px));
+  height: 70vh;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  z-index: 9999;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+}
+
+.msg-pinned-sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.msg-pinned-close {
+  background: transparent;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.msg-pinned-sidebar-item {
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background: var(--bg-card);
+  cursor: pointer;
+}
+
+.msg-pinned-sidebar-item:hover {
+  background: var(--bg-elevated);
+}
+
+.msg-pinned-unpin {
+  margin-top: 8px;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+}

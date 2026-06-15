@@ -21,6 +21,7 @@ export default function MessageList({
   const [threadReplyText, setThreadReplyText] = useState('');
   const [hoveredReply, setHoveredReply] = useState(null);
   const [editingReplyId, setEditingReplyId] = useState(null);
+  const [showPinnedSidebar, setShowPinnedSidebar] = useState(false);
   const bottomRef = useRef(null);
   const isMod = ['owner', 'moderator'].includes(currentUser?.role);
 
@@ -80,6 +81,93 @@ export default function MessageList({
   return (
     <div className="msg-list">
 
+  {showPinnedSidebar && (
+    <>
+      <div
+        className="msg-pinned-overlay"
+        onClick={() => setShowPinnedSidebar(false)}
+      />
+
+      <div className="msg-pinned-sidebar">
+        <div className="msg-pinned-sidebar-header">
+          <h3>📌 Pinned Messages</h3>
+
+          <button
+            className="msg-pinned-close"
+            onClick={() => setShowPinnedSidebar(false)}
+          >
+            ✕
+          </button>
+        </div>
+
+        {pinnedMessages.length === 0 ? (
+          <div className="msg-pinned-empty">
+            <p>📌 No pinned messages in this channel</p>
+          </div>
+        ) : (
+          pinnedMessages.map((msg) => (
+            <div
+            key={msg.id}
+            className="msg-pinned-sidebar-item"
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+          
+              document
+                .getElementById(`message-${msg.id}`)
+                ?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "center",
+                });
+          
+              setShowPinnedSidebar(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+          
+                document
+                  .getElementById(`message-${msg.id}`)
+                  ?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                  });
+          
+                setShowPinnedSidebar(false);
+              }
+            }}
+          >
+              <strong>{msg.username}</strong>
+
+              <span className="msg-pinned-time">
+                {new Date(msg.timestamp).toLocaleString()}
+              </span>
+
+              <p>
+                {(msg.text || "").length > 100
+                  ? (msg.text || "").slice(0, 100) + "..."
+                  : msg.text}
+              </p>
+
+              {isMod && (
+                <button
+                  className="msg-pinned-unpin"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlePin(msg.id);
+                  }}
+                >
+                  Unpin
+                </button>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </>
+  )}
       {/* ── Edit History Modal ── */}
       {showEditHistory && (
         <div className="msg-edit-history-overlay" onClick={() => setShowEditHistory(null)}>
@@ -120,9 +208,16 @@ export default function MessageList({
           </div>
         </div>
       )}
-
+      <div className="msg-pinned-toolbar">
+  <button
+    className="msg-pinned-toggle-btn"
+    onClick={() => setShowPinnedSidebar(true)}
+  >
+    📌 Pinned ({pinnedMessages.length})
+  </button>
+</div>
       {/* ── Pinned messages banner ── */}
-      {pinnedMessages.length > 0 && (
+      {/* {pinnedMessages.length > 0 && (
         <div className="msg-pinned-banner">
           <span className="msg-pinned-label">📌 {pinnedMessages.length} pinned</span>
           <div className="msg-pinned-list">
@@ -141,7 +236,7 @@ export default function MessageList({
             ))}
           </div>
         </div>
-      )}
+      )} */}
 
       {/* ── Room status badges ── */}
       {(roomSettings?.isReadOnly || roomSettings?.isLocked || roomSettings?.isPrivate) && (
@@ -162,11 +257,12 @@ export default function MessageList({
 
         {mainMessages.map(msg => (
           <div
-            key={msg.id}
-            className={`msg-row ${msg.deleted ? 'msg-deleted' : ''} ${msg.pinned && !msg.deleted ? 'msg-is-pinned' : ''}`}
-            onMouseEnter={() => setHoveredMsg(msg.id)}
-            onMouseLeave={() => setHoveredMsg(null)}
-          >
+          id={`message-${msg.id}`}
+          key={msg.id}
+          className={`msg-row ${msg.deleted ? 'msg-deleted' : ''} ${msg.pinned && !msg.deleted ? 'msg-is-pinned' : ''}`}
+          onMouseEnter={() => setHoveredMsg(msg.id)}
+          onMouseLeave={() => setHoveredMsg(null)}
+        >
             {/* Avatar */}
             <div className={`msg-avatar msg-avatar-role-${msg.role}`}>
               {msg.username?.[0]?.toUpperCase()}
@@ -373,6 +469,7 @@ export default function MessageList({
 
     <div className="msg-thread-parent">
       <strong>{selectedThread.username}</strong>
+      
       <p>{selectedThread.text}</p>
     </div>
 
