@@ -39,6 +39,13 @@ const { server } = require('../server');
 const { generateToken } = require('../middleware/auth');
 
 test('Image Upload Integration Test Suite', async (t) => {
+  t.after(async () => {
+    Module._load = originalLoad;
+    if (server.listening) {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
   // Start server on a dynamic port
   await new Promise((resolve) => server.listen(0, resolve));
   const port = server.address().port;
@@ -72,8 +79,8 @@ test('Image Upload Integration Test Suite', async (t) => {
 
   await t.test('POST /api/upload - uploads valid image files successfully', async () => {
     const formData = new FormData();
-    const fileContent = 'fake-png-binary-stream-data';
-    const blob = new Blob([fileContent], { type: 'image/png' });
+    const pngMagicBytes = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x00]);
+    const blob = new Blob([pngMagicBytes], { type: 'image/png' });
     formData.append('image', blob, 'test-image.png');
 
     const res = await fetch(`${baseUrl}/api/upload`, {
@@ -90,7 +97,7 @@ test('Image Upload Integration Test Suite', async (t) => {
     assert.ok(data.imageUrl.endsWith('.png'));
 
     // Clean up created test file on disk to keep repository clean
-    const filePath = path.join(__dirname, '..', '..', data.imageUrl);
+    const filePath = path.join(__dirname, '..', '..', data.imageUrl.replace(/^\/+/, ''));
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
@@ -134,6 +141,22 @@ test('Image Upload Integration Test Suite', async (t) => {
     assert.equal(data.error, 'Invalid file type. Only JPEG, PNG, GIF, and WEBP images are allowed.');
   });
 
-  // Tear down server
-  await new Promise((resolve) => server.close(resolve));
+  await t.test('POST /api/upload - rejects files with spoofed MIME and extension but invalid content signature', async () => {
+    const formData = new FormData();
+    const fileContent = 'alert("xss disguised as png")';
+    const blob = new Blob([fileContent], { type: 'image/png' });
+    formData.append('image', blob, 'exploit.png');
+
+    const res = await fetch(`${baseUrl}/api/upload`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${validToken}`,
+      },
+      body: formData,
+    });
+    const data = await res.json();
+
+    assert.equal(res.status, 400);
+    assert.equal(data.error, 'Invalid file content. Uploaded file is not a valid image.');
+  });
 });

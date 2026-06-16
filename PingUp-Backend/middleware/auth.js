@@ -112,7 +112,10 @@ const requireRole = (requiredRole) => {
  */
 const requireAuth = (req, res, next) => {
   const authHeaderVal = req.headers.authorization;
-  const token = authHeaderVal && authHeaderVal.split(' ')[1];
+  if (!authHeaderVal || !authHeaderVal.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized: No token provided' });
+  }
+  const token = authHeaderVal.slice('Bearer '.length).trim();
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized: No token provided' });
   }

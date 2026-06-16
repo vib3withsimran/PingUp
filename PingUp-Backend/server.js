@@ -88,9 +88,62 @@ app.use(express.json());
 // Serve uploaded images
 app.use('/uploads', express.static(uploadDir));
 
+/**
+ * Verifies that the file content starts with a valid image header (magic bytes).
+ * Supports JPEG, PNG, GIF, and WEBP.
+ */
+async function checkFileSignature(filePath) {
+  let fileHandle;
+  try {
+    fileHandle = await fs.promises.open(filePath, 'r');
+    const buffer = Buffer.alloc(12);
+    const { bytesRead } = await fileHandle.read(buffer, 0, 12, 0);
+
+    if (bytesRead < 4) {
+      return false;
+    }
+
+    // JPEG: FF D8 FF
+    if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+      return true;
+    }
+
+    // PNG: 89 50 4E 47 0D 0A 1A 0A
+    if (bytesRead >= 8 &&
+        buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47 &&
+        buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A) {
+      return true;
+    }
+
+    // GIF: GIF87a or GIF89a
+    // 47 49 46 38 37 61 or 47 49 46 38 39 61
+    if (bytesRead >= 6 &&
+        buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38 &&
+        (buffer[4] === 0x37 || buffer[4] === 0x39) && buffer[5] === 0x61) {
+      return true;
+    }
+
+    // WEBP: RIFF at 0..3, and WEBP at 8..11
+    if (bytesRead >= 12 &&
+        buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+        buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) {
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Error validating image file signature:', error);
+    return false;
+  } finally {
+    if (fileHandle) {
+      await fileHandle.close();
+    }
+  }
+}
+
 // Image upload route
 app.post('/api/upload', requireAuth, (req, res, next) => {
-  upload.single('image')(req, res, (err) => {
+  upload.single('image')(req, res, async (err) => {
     if (err instanceof multer.MulterError) {
       // Multer specific errors (e.g. file size limit exceeded)
       return res.status(400).json({ error: `Upload error: ${err.message}` });
@@ -101,6 +154,17 @@ app.post('/api/upload', requireAuth, (req, res, next) => {
 
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Server-side magic-byte/content signature validation
+    const isValidSignature = await checkFileSignature(req.file.path);
+    if (!isValidSignature) {
+      try {
+        await fs.promises.unlink(req.file.path);
+      } catch (unlinkErr) {
+        console.error('Failed to delete invalid file:', unlinkErr);
+      }
+      return res.status(400).json({ error: 'Invalid file content. Uploaded file is not a valid image.' });
     }
 
     const imageUrl = `/uploads/${req.file.filename}`;
@@ -180,7 +244,12 @@ function roomToChannel(r) {
 
 // ─── Auth helper ──────────────────────────────────────────────────
 function authHeader(req, res) {
-    const token = req.headers.authorization?.split(' ')[1];
+    const authHeaderVal = req.headers.authorization;
+    if (!authHeaderVal || !authHeaderVal.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return null;
+    }
+    const token = authHeaderVal.slice('Bearer '.length).trim();
     if (!token) { res.status(401).json({ error: 'Unauthorized' }); return null; }
     const decoded = verifyToken(token);
     if (!decoded) { res.status(401).json({ error: 'Invalid token' }); return null; }
