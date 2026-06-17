@@ -105,6 +105,28 @@ const requireRole = (requiredRole) => {
     next();
   };
 }
+
+/**
+ * Express middleware to enforce authentication on REST API endpoints.
+ * Extracts the JWT, validates it, and mounts the payload to req.user.
+ */
+const requireAuth = (req, res, next) => {
+  const authHeaderVal = req.headers.authorization;
+  if (!authHeaderVal || !authHeaderVal.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized: No token provided' });
+  }
+  const token = authHeaderVal.slice('Bearer '.length).trim();
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized: No token provided' });
+  }
+  const decoded = verifyToken(token);
+  if (!decoded) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid or expired token' });
+  }
+  req.user = decoded;
+  next();
+};
+
 async function socketAuthMiddleware(socket, next) {
   const token = socket.handshake.auth?.token;
   if (!token) return next(new Error('AUTH_REQUIRED'));
@@ -123,5 +145,6 @@ module.exports = {
   generateRefreshToken,
   verifyToken,
   verifyRefreshToken,
-  socketAuthMiddleware
+  socketAuthMiddleware,
+  requireAuth
 };

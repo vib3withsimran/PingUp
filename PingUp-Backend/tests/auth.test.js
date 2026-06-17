@@ -1,3 +1,4 @@
+process.env.NODE_ENV = 'test';
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 const test = require('node:test');

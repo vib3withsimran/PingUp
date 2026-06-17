@@ -476,6 +476,7 @@ const [threadReplies, setThreadReplies] = useState([]);
             roomName={activeChannel.name}
             roomSettings={roomSettings}
             currentUser={currentUser}
+            token={token}
           />
         </>
       );

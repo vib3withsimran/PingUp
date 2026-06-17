@@ -18,7 +18,35 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname)),
 });
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+
+/**
+ * Filter uploaded files based on MIME type and file extension.
+ * 
+ * Non-obvious decisions:
+ * 1. Double validation: checks both content-type (mimetype) and file extension to mitigate
+ *    malicious extension renaming bypasses (e.g. uploading .html disguised as .png).
+ * 2. Whitelist approach: restricts uploads strictly to safe image assets (JPEG, PNG, GIF, WEBP)
+ *    to prevent Cross-Site Scripting (XSS) via HTML uploads or Remote Code Execution (RCE) in public static directories.
+ */
+const fileFilter = (req, file, cb) => {
+  const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+
+  const isMimeAllowed = allowedMimeTypes.includes(file.mimetype);
+  const isExtensionAllowed = allowedExtensions.includes(path.extname(file.originalname).toLowerCase());
+
+  if (isMimeAllowed && isExtensionAllowed) {
+    cb(null, true);
+  } else {
+    cb(new Error('Invalid file type. Only JPEG, PNG, GIF, and WEBP images are allowed.'), false);
+  }
+};
+
+const upload = multer({ 
+  storage, 
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
 
 const { pubClient, subClient, redisClient, redisReady } = require('./config/redis');
 const { messageQueue } = require('./services/messageQueue');
@@ -27,10 +55,8 @@ const User = require('./models/User');
 const Room = require('./models/Room');
 const Message = require('./models/Message');
 const DirectMessage = require('./models/DirectMessage');
-const { generateToken, socketAuthMiddleware, verifyToken, generateRefreshToken, verifyRefreshToken } = require('./middleware/auth');
+const { generateToken, socketAuthMiddleware, verifyToken, generateRefreshToken, verifyRefreshToken, requireAuth } = require('./middleware/auth');
 const { ROLES, hasPermission } = require('./data/store'); // <-- IMPORTED WEIGHT SYSTEM
-
-const MAX_MESSAGE_LENGTH = 2000;
 
 const ServerSettings = require('./models/ServerSettings');
 const app = express();
@@ -62,11 +88,88 @@ app.use(express.json());
 // Serve uploaded images
 app.use('/uploads', express.static(uploadDir));
 
+/**
+ * Verifies that the file content starts with a valid image header (magic bytes).
+ * Supports JPEG, PNG, GIF, and WEBP.
+ */
+async function checkFileSignature(filePath) {
+  let fileHandle;
+  try {
+    fileHandle = await fs.promises.open(filePath, 'r');
+    const buffer = Buffer.alloc(12);
+    const { bytesRead } = await fileHandle.read(buffer, 0, 12, 0);
+
+    if (bytesRead < 4) {
+      return false;
+    }
+
+    // JPEG: FF D8 FF
+    if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+      return true;
+    }
+
+    // PNG: 89 50 4E 47 0D 0A 1A 0A
+    if (bytesRead >= 8 &&
+        buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47 &&
+        buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A) {
+      return true;
+    }
+
+    // GIF: GIF87a or GIF89a
+    // 47 49 46 38 37 61 or 47 49 46 38 39 61
+    if (bytesRead >= 6 &&
+        buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38 &&
+        (buffer[4] === 0x37 || buffer[4] === 0x39) && buffer[5] === 0x61) {
+      return true;
+    }
+
+    // WEBP: RIFF at 0..3, and WEBP at 8..11
+    if (bytesRead >= 12 &&
+        buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+        buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) {
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Error validating image file signature:', error);
+    return false;
+  } finally {
+    if (fileHandle) {
+      await fileHandle.close();
+    }
+  }
+}
+
 // Image upload route
-app.post('/api/upload', verifyToken, upload.single('image'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  const imageUrl = `/uploads/${req.file.filename}`;
-  res.json({ imageUrl });
+app.post('/api/upload', requireAuth, (req, res, next) => {
+  upload.single('image')(req, res, async (err) => {
+    if (err instanceof multer.MulterError) {
+      // Multer specific errors (e.g. file size limit exceeded)
+      return res.status(400).json({ error: `Upload error: ${err.message}` });
+    } else if (err) {
+      // Custom fileFilter rejection error or other unknown errors
+      return res.status(400).json({ error: err.message });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Server-side magic-byte/content signature validation
+    const isValidSignature = await checkFileSignature(req.file.path);
+    if (!isValidSignature) {
+      try {
+        await fs.promises.unlink(req.file.path);
+      } catch (unlinkErr) {
+        console.error('Failed to delete invalid file:', unlinkErr);
+      }
+      return res.status(400).json({ error: 'Invalid file content. Uploaded file is not a valid image.' });
+    }
+
+    const imageUrl = `/uploads/${req.file.filename}`;
+    res.json({ imageUrl });
+  });
 });
 
 
@@ -130,15 +233,10 @@ function roomToChannel(r) {
         description: r.description,
         emoji: r.emoji || '💬',
         category: r.category,
-    
         isPrivate: r.isPrivate || false,
         isReadOnly: r.isReadOnly || false,
         isLocked: r.isLocked || false,
-    
-        slowModeSeconds: r.slowModeSeconds || 0,
-    
         isVoice: r.isVoice || false,
-    
         allowedUsers: r.allowedUsers?.map(id => id.toString()) || [],
         pinnedMessages: r.pinnedMessages?.map(id => id.toString()) || [],
     };
@@ -146,7 +244,12 @@ function roomToChannel(r) {
 
 // ─── Auth helper ──────────────────────────────────────────────────
 function authHeader(req, res) {
-    const token = req.headers.authorization?.split(' ')[1];
+    const authHeaderVal = req.headers.authorization;
+    if (!authHeaderVal || !authHeaderVal.startsWith('Bearer ')) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return null;
+    }
+    const token = authHeaderVal.slice('Bearer '.length).trim();
     if (!token) { res.status(401).json({ error: 'Unauthorized' }); return null; }
     const decoded = verifyToken(token);
     if (!decoded) { res.status(401).json({ error: 'Invalid token' }); return null; }
@@ -705,46 +808,6 @@ async function processCommand(socket, roomName, text) {
             ok(`#${room.name} is now ${room.isLocked ? 'locked 🔒' : 'unlocked 🔓'}.`);
             break;
         }
-        case 'slowmode': {
-
-            if (!isOwner)
-              return perm('Owner only.');
-          
-            const room = await Room.findOne({
-              name: args[0]?.toLowerCase()
-            });
-          
-            if (!room)
-              return err(`#${args[0]} not found.`);
-          
-            const seconds = Number(args[1]);
-          
-            if (
-              Number.isNaN(seconds) ||
-              seconds < 0
-            ) {
-              return err(
-                'Usage: /slowmode <channel> <seconds>'
-              );
-            }
-          
-            room.slowModeSeconds = seconds;
-          
-            await room.save();
-          
-            await broadcastStructure();
-          
-            io.to(room.name).emit(
-              'room:settings',
-              roomToChannel(room)
-            );
-          
-            ok(
-              `Slow mode for #${room.name} set to ${seconds}s.`
-            );
-          
-            break;
-          }
 
         case 'private': {
             if (!isOwner) return perm('Admin only.');
@@ -1004,6 +1067,13 @@ io.on('connection', async (socket) => {
                 const trimmed = text?.trim();
                if (!trimmed && !imageUrl) return;
 
+               if (trimmed && trimmed.length > MAX_MESSAGE_LENGTH) {
+                   return socket.emit(
+                       'error:general',
+                       `Message exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters.`
+                   );
+               }
+
                 let resolvedRoom = roomName;
                 let room = null;
                 if (channelId) {
@@ -1024,32 +1094,6 @@ io.on('connection', async (socket) => {
                 if (room.isLocked)
                     return socket.emit('error:permission', `#${room.name} is locked.`);
 
-                if (
-                    room.slowModeSeconds > 0 &&
-                    !hasPermission(freshUser.role, ROLES.MODERATOR)
-                  ) {
-                    const lastMessage = await Message.findOne({
-                      roomName: resolvedRoom,
-                      userId: socket.user.id,
-                      deleted: { $ne: true },
-                    }).sort({ createdAt: -1 });
-                  
-                    if (lastMessage) {
-                      const secondsSinceLastMessage =
-                        (Date.now() - new Date(lastMessage.createdAt).getTime()) / 1000;
-                  
-                      if (secondsSinceLastMessage < room.slowModeSeconds) {
-                        const remaining = Math.ceil(
-                          room.slowModeSeconds - secondsSinceLastMessage
-                        );
-                  
-                        return socket.emit(
-                          'error:permission',
-                          `Slow mode enabled. Please wait ${remaining} seconds.`
-                        );
-                      }
-                    }
-                  }
                 // All base users are at least Members, so they can send.
                 if (!hasPermission(freshUser.role, ROLES.MEMBER))
                     return socket.emit('error:permission', 'You cannot send messages.');
@@ -1083,15 +1127,11 @@ io.on('connection', async (socket) => {
 
     // ── Typing ─────────────────────────────────────────────────────
     socket.on('typing:start', ({ roomName, channelId }) => {
-        const target = channelId || roomName;
-        socket.typingIn = target;
         socket.to(channelId || roomName).emit('typing:update', {
             username: socket.user.username, typing: true,
         });
     });
     socket.on('typing:stop', ({ roomName, channelId }) => {
-        const target = channelId || roomName;
-        socket.typingIn = null; 
         socket.to(channelId || roomName).emit('typing:update', {
             username: socket.user.username, typing: false,
         });
@@ -1162,57 +1202,6 @@ io.on('connection', async (socket) => {
             text: `✅ #${room.name} is now ${room.isReadOnly ? 'read-only 🔇' : 'writable ✍️'}`,
         });
     }, 'Failed to update channel settings.'));
-
-    socket.on(
-        'channel:setSlowMode',
-        safeSocketHandler(
-          socket,
-          'channel:setSlowMode',
-          async ({ channelId, seconds }) => {
-      
-            if (socket.user.role !== 'owner')
-              return socket.emit(
-                'error:permission',
-                'Owner only.'
-              );
-      
-              const room = await Room.findById(channelId);
-      
-              if (!room) return;
-        
-              const numSeconds = Number(seconds);
-              if (Number.isNaN(numSeconds) || numSeconds < 0) {
-                return socket.emit(
-                  'error:general',
-                  'Slow mode seconds must be a non-negative number.'
-                );
-              }
-        
-              room.slowModeSeconds = numSeconds;
-        
-              await room.save();
-      
-            await broadcastStructure();
-      
-            io.to(room.name).emit(
-              'room:settings',
-              roomToChannel(room)
-            );
-      
-            io.to(channelId).emit(
-              'room:settings',
-              roomToChannel(room)
-            );
-      
-            socket.emit('command:response', {
-              type: 'success',
-              text: `✅ Slow mode set to ${seconds}s in #${room.name}`,
-            });
-      
-          },
-          'Failed to update slow mode.'
-        )
-      );
 
     socket.on('channel:toggleLock', safeSocketHandler(socket, 'channel:toggleLock', async ({ channelId }) => {
         if (socket.user.role !== 'owner')
@@ -1461,102 +1450,6 @@ io.on('connection', async (socket) => {
                             user => user !== socket.user.username
                         );
 
-  // Send filtered structure on connect
-  const rooms = await Room.find().sort({ category: 1, order: 1, createdAt: 1 });
-  const categoryMap = new Map();
-  for (const r of rooms) {
-    if (r.isPrivate && dbUser.role === ROLES.MEMBER) continue;
-    const catKey = r.category || 'general';
-    if (!categoryMap.has(catKey))
-      categoryMap.set(catKey, { id: `cat-${catKey}`, name: catKey, channels: [] });
-    categoryMap.get(catKey).channels.push(roomToChannel(r));
-  }
-  socket.emit('structure:update', [...categoryMap.values()]);
-  console.log(`[+] ${socket.user.username} (${socket.user.role})`);
-
-  // ── Join channel (by name) ─────────────────────────────────────
-  socket.on('room:join', safeSocketHandler(socket, 'room:join', async ({ roomName }) => {
-    const room = await Room.findOne({ name: roomName });
-    if (!room) return socket.emit('error:general', 'Channel not found.');
-    if (room.isPrivate && dbUser.role === ROLES.MEMBER) {
-      const allowed = room.allowedUsers.map(id => id.toString()).includes(socket.user.id);
-      if (!allowed) return socket.emit('error:permission', 'This channel is private.');
-    }
-    ;[...socket.rooms].forEach(r => { if (r !== socket.id) socket.leave(r); });
-    socket.join(roomName);
-    socket.currentRoom = roomName;
-    const history = await Message.find({ roomName, deleted: false })
-      .sort({ createdAt: -1 }).limit(50).lean();
-    const pinnedIds = room.pinnedMessages.map(id => id.toString());
-    socket.emit('room:history', {
-      roomName,
-      messages: history.reverse().map(m => ({
-        id: m._id.toString(), userId: m.userId.toString(),
-        username: m.username, role: m.role, text: m.text,
-        timestamp: m.createdAt, deleted: m.deleted,
-        pinned: pinnedIds.includes(m._id.toString()),
-        editedAt: m.editedAt,
-        editHistory: m.editHistory,
-      })),
-      roomSettings: roomToChannel(room),
-    });
-    io.to(roomName).emit('room:notification', {
-      text: `${socket.user.username} joined #${roomName}`, type: 'join',
-    });
-  }, 'Failed to join channel.'));
-
-  // ── Join channel (by ID) ───────────────────────────────────────
-  socket.on('channel:join', safeSocketHandler(socket, 'channel:join', async ({ channelId }) => {
-    const room = await Room.findById(channelId);
-    if (!room) return socket.emit('error:general', 'Channel not found.');
-    if (room.isPrivate && dbUser.role === ROLES.MEMBER) {
-      const allowed = room.allowedUsers.map(id => id.toString()).includes(socket.user.id);
-      if (!allowed) return socket.emit('error:permission', 'This channel is private.');
-    }
-    ;[...socket.rooms].forEach(r => { if (r !== socket.id) socket.leave(r); });
-    socket.join(channelId);
-    socket.currentRoom = room.name;
-    socket.currentChannelId = channelId;
-    const history = await Message.find({ roomName: room.name, deleted: false })
-      .sort({ createdAt: -1 }).limit(50).lean();
-    const pinnedIds = room.pinnedMessages.map(id => id.toString());
-    socket.emit('channel:history', {
-      channelId,
-      messages: history.reverse().map(m => ({
-        id: m._id.toString(), userId: m.userId.toString(),
-        username: m.username, role: m.role, text: m.text,
-        timestamp: m.createdAt, deleted: m.deleted,
-        pinned: pinnedIds.includes(m._id.toString()),
-        editedAt: m.editedAt,
-        editHistory: m.editHistory,
-      })),
-      roomSettings: roomToChannel(room),
-    });
-  }, 'Failed to join channel.'));
-
-  // ── Send message ───────────────────────────────────────────────
-  socket.on('message:send', safeSocketHandler(socket, 'message:send', async ({ roomName, channelId, text }) => {
-    const trimmed = text?.trim();
-
-if (!trimmed) return;
-
-if (trimmed.length > MAX_MESSAGE_LENGTH) {
-
-  return socket.emit(
-    'error:general',
-    `Message exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters.`
-  );
-}
-
-    let resolvedRoom = roomName;
-    let room = null;
-    if (channelId) {
-      room = await Room.findById(channelId);
-      resolvedRoom = room?.name;
-    } else {
-      room = await Room.findOne({ name: roomName });
-    }
-    if (!resolvedRoom || !room) return;
                         // remove empty emoji group
                         if (reaction.users.length === 0) {
                             message.reactions = message.reactions.filter(
@@ -1704,6 +1597,12 @@ if (trimmed.length > MAX_MESSAGE_LENGTH) {
 
     socket.on('dm:send', safeSocketHandler(socket, 'dm:send', async ({ toUserId, text, clientId }, callback) => {
         try {
+            if (text && text.trim().length > MAX_MESSAGE_LENGTH) {
+                if (typeof callback === 'function') {
+                    return callback({ error: `Message exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters.`, status: 'failed' });
+                }
+                return socket.emit('error:general', `Message exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters.`);
+            }
             if (clientId) {
                 const existingMsg = await DirectMessage.findOne({ clientId });
 
@@ -1762,56 +1661,10 @@ if (trimmed.length > MAX_MESSAGE_LENGTH) {
 
     socket.on('dm:typing:start', ({ toUserId }) => {
         const convId = [socket.user.id, toUserId].sort().join('_');
-        socket.dmTypingIn = `dm:${convId}`;
         socket.to(`dm:${convId}`).emit('dm:typing', { username: socket.user.username, typing: true });
     });
-  }, 'Failed to join voice channel.'));
-
-  socket.on('voice:leave', ({ channelId }) => {
-    socket.leave(`voice:${channelId}`);
-    socket.currentVoice = null;
-    io.to(`voice:${channelId}`).emit('voice:left', { userId: socket.user.id });
-  });
-
-  // ── DMs ────────────────────────────────────────────────────────
-  socket.on('dm:join', safeSocketHandler(socket, 'dm:join', async ({ otherUserId }) => {
-    const convId = [socket.user.id, otherUserId].sort().join('_');
-    socket.join(`dm:${convId}`);
-    socket.currentDM = convId;
-    await DirectMessage.updateMany(
-      { conversationId: convId, senderId: { $ne: socket.user.id }, read: false },
-      { read: true }
-    );
-    const otherSocket = [...io.sockets.sockets.values()].find(s => s.user?.id === otherUserId);
-    if (otherSocket) otherSocket.emit('dm:read', { conversationId: convId });
-  }, 'Failed to open direct message.'));
-
-  socket.on('dm:send', safeSocketHandler(socket, 'dm:send', async ({ toUserId, text }) => {
-    const trimmed = text?.trim();
-
-if (!trimmed) return;
-
-if (trimmed.length > MAX_MESSAGE_LENGTH) {
-  return socket.emit(
-    'error:general',
-    `Message exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters.`
-  );
-}
-    const toUser = await User.findById(toUserId);
-    if (!toUser) return socket.emit('error:general', 'User not found.');
-    const convId = [socket.user.id, toUserId].sort().join('_');
-    const freshUser = await User.findById(socket.user.id);
-    const msg = await DirectMessage.create({
-      conversationId: convId,
-      participants: [socket.user.id, toUserId],
-      senderId: socket.user.id,
-      senderUsername: socket.user.username,
-      senderRole: freshUser.role,
-      text: trimmed,
-      read: false,
     socket.on('dm:typing:stop', ({ toUserId }) => {
         const convId = [socket.user.id, toUserId].sort().join('_');
-        socket.dmTypingIn = null;
         socket.to(`dm:${convId}`).emit('dm:typing', { username: socket.user.username, typing: false });
     });
 
@@ -1820,17 +1673,6 @@ if (trimmed.length > MAX_MESSAGE_LENGTH) {
         // Remove this socket from the user's active-socket set in Redis
         await redisClient.sRem(`user:sockets:${socket.user.id}`, socket.id);
         const socketCount = await redisClient.sCard(`user:sockets:${socket.user.id}`);
-        
-        if (socket.typingIn) {
-            socket.to(socket.typingIn).emit('typing:update', {
-                username: socket.user.username, typing: false,
-            });
-        }
-        if (socket.dmTypingIn) {
-            socket.to(socket.dmTypingIn).emit('dm:typing', {
-                username: socket.user.username, typing: false,
-            });
-        }
 
         if (socketCount === 0) {
             // Last tab closed — the user is truly offline now
@@ -1860,13 +1702,17 @@ if (trimmed.length > MAX_MESSAGE_LENGTH) {
 });
 
 // ─── Connect & Start ──────────────────────────────────────────────
-mongoose.connect(process.env.MONGO_URI)
-    .then(async () => {
-        console.log('✅ MongoDB connected');
-        await redisReady;
-        await seedRooms();
-        server.listen(process.env.PORT || 3001, () =>
-            console.log(`🚀 Server on http://localhost:${process.env.PORT || 3001}`)
-        );
-    })
-    .catch(err => { console.error('MongoDB error:', err); process.exit(1); });
+if (require.main === module) {
+    mongoose.connect(process.env.MONGO_URI)
+        .then(async () => {
+            console.log('✅ MongoDB connected');
+            await redisReady;
+            await seedRooms();
+            server.listen(process.env.PORT || 3001, () =>
+                console.log(`🚀 Server on http://localhost:${process.env.PORT || 3001}`)
+            );
+        })
+        .catch(err => { console.error('MongoDB error:', err); process.exit(1); });
+}
+
+module.exports = { app, server };
