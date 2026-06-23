@@ -215,8 +215,12 @@ const [threadReplies, setThreadReplies] = useState([]);
       alert(`You were kicked by ${by}.`);
       handleLogout();
     });
+    const activeChannelRef = useRef(activeChannel);
+    useEffect(() => {
+        activeChannelRef.current = activeChannel;
+    }, [activeChannel]);
     socket.on('channel:kicked', ({ channelId, reason }) => {
-      if (activeChannel?.id === channelId) {
+      if (activeChannelRef.current?.id === channelId) {
         setActiveChannel(null);
         setMessages([]);
         setRoomSettings(null);
