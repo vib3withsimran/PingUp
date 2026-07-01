@@ -3,7 +3,7 @@ const User = require('../models/User');
 const Room = require('../models/Room');
 const Message = require('../models/Message');
 const DirectMessage = require('../models/DirectMessage');
-const { ROLES, hasPermission } = require('../data/store');
+const { ROLES, hasPermission, ROLE_WEIGHTS } = require('../data/store');
 const { processCommand } = require('./commands');
 const { messageQueue } = require('../services/messageQueue');
 const { 
@@ -438,7 +438,9 @@ function setupHandlers(io, socket) {
         if (socket.user.role !== 'owner') return socket.emit('error:permission', 'Owner only.');
         if (!['member', 'moderator'].includes(role)) return;
         const target = await User.findById(targetId);
-        if (!target || target.role === ROLES.ADMIN) return;
+        if (!target) return;
+        if (ROLE_WEIGHTS[target.role] >= ROLE_WEIGHTS[socket.user.role])
+            return socket.emit('error:permission', 'Cannot act on equal or higher privileged users.');
         target.role = role;
         await target.save();
         const ls = [...io.sockets.sockets.values()].find(s => s.user?.id === targetId);
@@ -451,7 +453,9 @@ function setupHandlers(io, socket) {
         if (!['owner', 'moderator'].includes(socket.user.role))
             return socket.emit('error:permission', 'Insufficient permissions.');
         const target = await User.findById(targetId);
-        if (!target || target.role === ROLES.ADMIN) return;
+        if (!target) return;
+        if (ROLE_WEIGHTS[target.role] >= ROLE_WEIGHTS[socket.user.role])
+            return socket.emit('error:permission', 'Cannot act on equal or higher privileged users.');
         const ts = [...io.sockets.sockets.values()].find(s => s.user?.id === targetId);
         if (ts) { ts.emit('kicked', { by: socket.user.username }); ts.disconnect(true); }
         io.emit('room:notification', { text: `👢 ${target.username} kicked`, type: 'system' });
@@ -460,7 +464,9 @@ function setupHandlers(io, socket) {
     socket.on('user:ban', safeSocketHandler(socket, 'user:ban', async ({ targetId }) => {
         if (socket.user.role !== 'owner') return socket.emit('error:permission', 'Owner only.');
         const target = await User.findById(targetId);
-        if (!target || target.role === ROLES.ADMIN) return;
+        if (!target) return;
+        if (ROLE_WEIGHTS[target.role] >= ROLE_WEIGHTS[socket.user.role])
+            return socket.emit('error:permission', 'Cannot act on equal or higher privileged users.');
         target.banned = true;
         await target.save();
         const ts = [...io.sockets.sockets.values()].find(s => s.user?.id === targetId);
@@ -469,6 +475,13 @@ function setupHandlers(io, socket) {
     }, 'Failed to ban user.'));
 
     socket.on('voice:join', safeSocketHandler(socket, 'voice:join', async ({ channelId, channelName }) => {
+        const room = await Room.findById(channelId);
+        if (!room || !room.isVoice) return socket.emit('error:general', 'Invalid voice channel.');
+        if (room.isPrivate && socket.user.role === ROLES.MEMBER) {
+            const allowed = room.allowedUsers?.map(id => id.toString()).includes(socket.user.id);
+            if (!allowed) return socket.emit('error:permission', 'This channel is private.');
+        }
+
         socket.join(`voice:${channelId}`);
         socket.currentVoice = channelId;
         io.to(`voice:${channelId}`).emit('voice:joined', {

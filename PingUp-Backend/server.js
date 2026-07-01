@@ -15,6 +15,7 @@ const uploadRoutes = require('./routes/upload');
 const usersRoutes = require('./routes/users');
 const channelsRoutes = require('./routes/channels');
 const dmRoutes = require('./routes/dm');
+const messagesRoutes = require('./routes/messages');
 const { initializeSockets } = require('./sockets/index');
 
 const app = express();
@@ -52,6 +53,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api', channelsRoutes); // /api/structure, /api/rooms
 app.use('/api/dm', dmRoutes);
+app.use('/api/messages', messagesRoutes);
 
 // Socket.IO
 initializeSockets(io);

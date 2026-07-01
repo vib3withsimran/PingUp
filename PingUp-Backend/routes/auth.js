@@ -3,6 +3,7 @@ const router = express.Router();
 const User = require('../models/User');
 const { generateToken, generateRefreshToken, verifyRefreshToken } = require('../middleware/auth');
 const { ROLES } = require('../data/store');
+const ServerSettings = require('../models/ServerSettings');
 
 router.post('/register', async (req, res) => {
     try {
@@ -13,18 +14,28 @@ router.post('/register', async (req, res) => {
         const exists = await User.findOne({ username: username.trim().toLowerCase() });
         if (exists) return res.status(409).json({ error: 'Username already taken.' });
 
-        const userCount = await User.countDocuments();
-        const isFirst = userCount === 0;
-        const role = isFirst ? ROLES.ADMIN : ROLES.MEMBER;
-
-        const user = await User.create({
+        let user = await User.create({
             username: username.trim().toLowerCase(),
             password,
-            role,
-            isFirst,
+            role: ROLES.MEMBER,
+            isFirst: false,
             displayName: displayName?.trim() || username.trim(),
             email: email?.trim() || '',
         });
+
+        const adminLock = await ServerSettings.findOneAndUpdate(
+            { key: 'admin_initialized' },
+            { $setOnInsert: { key: 'admin_initialized', value: user._id.toString() } },
+            { upsert: true, new: true }
+        );
+
+        if (adminLock.value === user._id.toString()) {
+            user.role = ROLES.ADMIN;
+            user.isFirst = true;
+            await user.save();
+        }
+
+        const isFirst = user.isFirst;
 
         const accessToken = generateToken(user);
         const refreshToken = generateRefreshToken(user);
@@ -97,6 +108,11 @@ router.post('/refresh', async (req, res) => {
         if (!user || user.refreshToken !== refreshToken) {
             return res.status(403).json({
                 error: 'Invalid refresh token'
+            });
+        }
+        if (user.banned) {
+            return res.status(403).json({
+                error: 'You have been banned.'
             });
         }
 

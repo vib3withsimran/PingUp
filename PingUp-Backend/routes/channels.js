@@ -10,6 +10,7 @@ router.get('/structure', async (req, res) => {
     if (!decoded) return;
 
     const me = await User.findById(decoded.id);
+    if (!me) return res.status(401).json({ error: 'User not found.' });
 
     const rooms = await Room.find().sort({ category: 1, order: 1, createdAt: 1 });
     const categoryMap = new Map();
@@ -18,7 +19,7 @@ router.get('/structure', async (req, res) => {
       if (r.isPrivate) {
         const isModOrOwner = hasPermission(me.role, ROLES.MODERATOR);
 
-        const isAllowedUser = r.allowedUsers.some(
+        const isAllowedUser = r.allowedUsers?.some(
           id => id.toString() === me._id.toString()
         );
 
@@ -48,6 +49,7 @@ router.get('/rooms', async (req, res) => {
     if (!decoded) return;
 
     const me = await User.findById(decoded.id);
+    if (!me) return res.status(401).json({ error: 'User not found.' });
 
     const rooms = await Room.find().sort({ createdAt: 1 });
 
