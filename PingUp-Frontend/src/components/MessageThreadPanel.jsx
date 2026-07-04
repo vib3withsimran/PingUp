@@ -1,4 +1,3 @@
-import { useRef, useEffect } from 'react';
 import { formatRelativeTime } from '../utils/formatRelativeTime';
 
 export default function MessageThreadPanel({
