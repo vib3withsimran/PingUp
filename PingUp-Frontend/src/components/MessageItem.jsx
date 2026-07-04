@@ -15,6 +15,7 @@ export default function MessageItem({
   onOpenThread,
   handlePin,
   handleReaction,
+  handleEditReaction,
   handleDelete,
   setShowEditHistory
 }) {
@@ -119,6 +120,21 @@ export default function MessageItem({
             ))}
           </div>
         )}
+        {msg.editReactions?.length > 0 && (
+          <div className="msg-reactions msg-edit-reactions">
+            {msg.editReactions.map((reaction, idx) => (
+              <button
+                key={idx}
+                className="msg-reaction-chip msg-edit-reaction-chip"
+                onClick={() => handleEditReaction(msg.id, reaction.emoji)}
+                title="Reaction to edit"
+              >
+                ✏️ <span>{reaction.emoji}</span>
+                <span>{reaction.users.length}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {!msg.deleted && hoveredMsg === msg.id && (
@@ -160,6 +176,14 @@ export default function MessageItem({
             title="React"
             onClick={() => handleReaction(msg.id, '🔥')}
           >🔥</button>
+
+          {msg.editedAt && (
+            <button
+              className="msg-toolbar-btn msg-toolbar-btn-edit-react"
+              title="React to Edit"
+              onClick={() => handleEditReaction(msg.id, '👍')}
+            >✏️👍</button>
+          )}
 
           {isMod && (
             <button

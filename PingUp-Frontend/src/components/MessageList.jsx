@@ -44,11 +44,18 @@ export default function MessageList({
   }
 
   function handleReaction(msgId, emoji) {
-  socket?.emit('message:reaction', {
-    messageId: msgId,
-    emoji,
-  });
-}
+    socket?.emit('message:reaction', {
+      messageId: msgId,
+      emoji,
+    });
+  }
+
+  function handleEditReaction(msgId, emoji) {
+    socket?.emit('message:edit:reaction', {
+      messageId: msgId,
+      emoji,
+    });
+  }
 
   function handleEditStart(msg) {
     setEditingMsgId(msg.id);
@@ -186,6 +193,7 @@ export default function MessageList({
             onOpenThread={onOpenThread}
             handlePin={handlePin}
             handleReaction={handleReaction}
+            handleEditReaction={handleEditReaction}
             handleDelete={handleDelete}
             setShowEditHistory={setShowEditHistory}
           />
@@ -227,6 +235,8 @@ export default function MessageList({
           handleEditSave={handleEditSave}
           handleEditCancel={handleEditCancel}
           handleDelete={handleDelete}
+          handleReaction={handleReaction}
+          handleEditReaction={handleEditReaction}
           threadReplyText={threadReplyText}
           setThreadReplyText={setThreadReplyText}
           socket={socket}

@@ -5225,6 +5225,32 @@ body {
   color: var(--text-primary);
 }
 
+/* ── Edit Reactions ── */
+.msg-edit-reactions {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border);
+}
+
+.msg-edit-reaction-chip {
+  background: rgba(var(--accent-rgb), 0.1);
+  border-color: rgba(var(--accent-rgb), 0.3);
+  font-size: 0.75rem;
+}
+
+.msg-edit-reaction-chip:hover {
+  background: rgba(var(--accent-rgb), 0.2);
+  border-color: var(--accent);
+}
+
+.msg-toolbar-btn-edit-react {
+  color: var(--accent);
+}
+
+.msg-toolbar-btn-edit-react:hover {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
 .msg-role-pill {
   font-size: .65rem;
   font-weight: 700;

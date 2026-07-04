@@ -196,14 +196,38 @@ const [threadReplies, setThreadReplies] = useState([]);
     });
 
     socket.on('message:reaction:update', ({ messageId, reactions }) => {
-  setMessages(prev =>
-    prev.map(m =>
-      String(m.id) === String(messageId)
-        ? { ...m, reactions }
-        : m
-    )
-  );
-});
+      setMessages(prev =>
+        prev.map(m =>
+          String(m.id) === String(messageId)
+            ? { ...m, reactions }
+            : m
+        )
+      );
+      setThreadReplies(prev =>
+        prev.map(m =>
+          String(m.id) === String(messageId)
+            ? { ...m, reactions }
+            : m
+        )
+      );
+    });
+
+    socket.on('message:edit:reaction:update', ({ messageId, editReactions }) => {
+      setMessages(prev =>
+        prev.map(m =>
+          String(m.id) === String(messageId)
+            ? { ...m, editReactions }
+            : m
+        )
+      );
+      setThreadReplies(prev =>
+        prev.map(m =>
+          String(m.id) === String(messageId)
+            ? { ...m, editReactions }
+            : m
+        )
+      );
+    });
 
     socket.on('message:pinned', ({ id, pinnedBy }) => {
       setMessages(prev => prev.map(m => m.id === id ? { ...m, pinned: true } : m));

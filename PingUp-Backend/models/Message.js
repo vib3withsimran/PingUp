@@ -55,6 +55,12 @@ const messageSchema = new mongoose.Schema({
       users: [{ type: String }]
     }
   ],
+  editReactions: [
+    {
+      emoji: { type: String },
+      users: [{ type: String }]
+    }
+  ],
   clientId: {
     type: String,
     sparse: true,

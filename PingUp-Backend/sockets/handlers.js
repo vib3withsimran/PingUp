@@ -82,6 +82,7 @@ function setupHandlers(io, socket) {
                 pinned: pinnedIds.includes(m._id.toString()),
                 editedAt: m.editedAt,
                 editHistory: m.editHistory,
+                editReactions: m.editReactions || [],
                 parentMessageId: m.parentMessageId,
                 replyCount: m.replyCount || 0,
             })),
@@ -357,6 +358,8 @@ function setupHandlers(io, socket) {
             text: trimmed,
             editedAt: updatedMsg.editedAt,
             hasEditHistory: updatedMsg.editHistory.length > 0,
+            username: updatedMsg.username,
+            editReactions: updatedMsg.editReactions || [],
         };
 
         const bc = channelId ? io.to(channelId) : io.to(rName);
@@ -380,7 +383,7 @@ function setupHandlers(io, socket) {
             replies: replies.map((m) => ({
                 id: m._id.toString(), userId: m.userId.toString(), username: m.username,
                 role: m.role, text: m.text, timestamp: m.createdAt, deleted: m.deleted,
-                editedAt: m.editedAt, replyCount: m.replyCount, parentMessageId: m.parentMessageId,
+                editedAt: m.editedAt, editReactions: m.editReactions || [], replyCount: m.replyCount, parentMessageId: m.parentMessageId,
             })),
         });
     }));
@@ -414,6 +417,36 @@ function setupHandlers(io, socket) {
             io.to(message.roomName).emit('message:reaction:update', payload);
         }
     }, 'Failed to react to message.'));
+
+    socket.on('message:edit:reaction', safeSocketHandler(socket, 'message:edit:reaction', async ({ messageId, emoji }) => {
+        const message = await Message.findById(messageId);
+        if (!message) return socket.emit('error:general', 'Message not found.');
+
+        let reaction = message.editReactions.find(r => r.emoji === emoji);
+        const userId = socket.user.id;
+
+        if (!reaction) {
+            message.editReactions.push({ emoji, users: [userId] });
+        } else {
+            const alreadyReacted = reaction.users.map(u => u.toString()).includes(userId);
+            if (alreadyReacted) {
+                reaction.users = reaction.users.filter(u => u.toString() !== userId);
+                if (reaction.users.length === 0) {
+                    message.editReactions = message.editReactions.filter(r => r.emoji !== emoji);
+                }
+            } else {
+                reaction.users.push(userId);
+            }
+        }
+        await message.save();
+        const updatedMessage = await Message.findById(messageId);
+        const room = await Room.findOne({ name: message.roomName });
+        if (room) {
+            const payload = { messageId, editReactions: updatedMessage.editReactions };
+            io.to(room._id.toString()).emit('message:edit:reaction:update', payload);
+            io.to(message.roomName).emit('message:edit:reaction:update', payload);
+        }
+    }, 'Failed to react to edit.'));
 
     socket.on('category:create', safeSocketHandler(socket, 'category:create', async ({ name }) => {
         if (socket.user.role !== 'owner') return socket.emit('error:permission', 'Owner only.');
