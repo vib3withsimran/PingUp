@@ -357,6 +357,7 @@ function setupHandlers(io, socket) {
             text: trimmed,
             editedAt: updatedMsg.editedAt,
             hasEditHistory: updatedMsg.editHistory.length > 0,
+            username: updatedMsg.username,
         };
 
         const bc = channelId ? io.to(channelId) : io.to(rName);
