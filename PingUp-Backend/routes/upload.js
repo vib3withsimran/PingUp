@@ -17,14 +17,14 @@ router.post('/', requireAuth, (req, res, next) => {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const isValidSignature = await checkFileSignature(req.file.path);
+    const isValidSignature = await checkFileSignature(req.file.path, req.file.originalname);
     if (!isValidSignature) {
       try {
         await fs.promises.unlink(req.file.path);
       } catch (unlinkErr) {
         console.error('Failed to delete invalid file:', unlinkErr);
       }
-      return res.status(400).json({ error: 'Invalid file content. Uploaded file is not a valid image.' });
+      return res.status(400).json({ error: 'Invalid file content. Uploaded file failed security validation.' });
     }
 
     const imageUrl = `/uploads/${req.file.filename}`;

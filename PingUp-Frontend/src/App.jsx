@@ -186,13 +186,16 @@ const [threadReplies, setThreadReplies] = useState([]);
         prev.map(m => m.id === id ? { ...m, deleted: true, text: '[message deleted]' } : m)
       );
     });
-    socket.on('message:edited', ({ id, text, editedAt, hasEditHistory }) => {
+    socket.on('message:edited', ({ id, text, editedAt, hasEditHistory, username }) => {
       setMessages(prev =>
         prev.map(m => m.id === id ? { ...m, text, editedAt, hasEditHistory } : m)
       );
       setThreadReplies(prev =>
         prev.map(m => m.id === id ? { ...m, text, editedAt, hasEditHistory } : m)
       );
+      if (username && username !== currentUser.username) {
+        setNotifications(prev => [...prev, `✏️ @${username} edited their message`]);
+      }
     });
 
     socket.on('message:reaction:update', ({ messageId, reactions }) => {

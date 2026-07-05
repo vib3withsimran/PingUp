@@ -1,4 +1,5 @@
 import MarkdownMessage from './MarkdownMessage';
+import { formatRelativeTime } from '../utils/formatRelativeTime';
 
 export default function MessageItem({
   msg,
@@ -47,9 +48,9 @@ export default function MessageItem({
             <span 
               className="msg-edited-tag"
               onClick={() => msg.editHistory && setShowEditHistory(msg)}
-              title="Click to view edit history"
+              title={`Click to view edit history (last edited ${new Date(msg.editedAt).toLocaleString()})`}
             >
-              ✏️ edited
+              ✏️ edited {formatRelativeTime(msg.editedAt)}
             </span>
           )}
           {msg.replyCount > 0 && (
