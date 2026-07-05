@@ -17,7 +17,8 @@ router.get('/', async (req, res) => {
             return res.json([]);
         }
 
-        const queryRegex = new RegExp(q, 'i');
+        const escapedQ = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const queryRegex = new RegExp(escapedQ, 'i');
         
         if (channelId) {
             const room = await Room.findById(channelId);
