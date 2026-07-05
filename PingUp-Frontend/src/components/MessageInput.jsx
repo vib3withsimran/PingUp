@@ -3,7 +3,12 @@ import '../styles/MessageInput.css';
 import { getApiUrl } from '../api';
 import { useDraftMessage } from '../hooks/useDraftMessage';
 
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const ALLOWED_FILE_TYPES = [
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+];
 
 
 export default function MessageInput({
@@ -126,11 +131,11 @@ export default function MessageInput({
     const file = e.target.files[0];
     if (!file) return;
 
-    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-    setImageError('Only JPEG, PNG, WebP, and GIF images are allowed.');
-    e.target.value = '';
-    return;
-  }
+    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+      setImageError('Only images and documents (PDF, DOC, DOCX) are allowed.');
+      e.target.value = '';
+      return;
+    }
     if (imagePreview) URL.revokeObjectURL(imagePreview);
     setImageError(null);
     setImageFile(file);
@@ -153,8 +158,17 @@ export default function MessageInput({
 
       {imagePreview && (
         <div style={{ padding: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img src={imagePreview} alt="preview" style={{ maxHeight: '80px', borderRadius: '8px' }} />
-          <button onClick={removeImage} style={{ cursor: 'pointer', background: 'none', border: 'none', fontSize: '16px' }}>✕</button>
+          {imageFile?.type?.startsWith('image/') ? (
+            <img src={imagePreview} alt="preview" style={{ maxHeight: '80px', borderRadius: '8px' }} />
+          ) : (
+            <div style={{ padding: '8px', background: '#f5f5f5', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '8px', color: '#333' }}>
+              <span style={{ fontSize: '24px' }}>📄</span>
+              <span style={{ fontSize: '14px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {imageFile?.name}
+              </span>
+            </div>
+          )}
+          <button onClick={removeImage} style={{ cursor: 'pointer', background: 'none', border: 'none', fontSize: '16px', color: '#666' }}>✕</button>
         </div>
       )}
       
@@ -172,7 +186,7 @@ export default function MessageInput({
       
       <input
         type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
+        accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         ref={fileInputRef}
         onChange={handleImageChange}
         style={{ display: 'none' }}
@@ -183,10 +197,10 @@ export default function MessageInput({
         className="msg-toolbar-btn"
         onClick={() => fileInputRef.current?.click()}
         disabled={isDisabled}
-        title="Attach image"
-        style={{ fontSize: '18px', padding: '0 8px', background: 'none', border: 'none', cursor: 'pointer' }}
+        title="Upload File"
+        style={{ fontSize: '14px', padding: '0 8px', background: 'none', border: 'none', cursor: 'pointer', color: '#666' }}
       >
-        📎
+        Upload File
       </button>
       
       <button
