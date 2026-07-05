@@ -1,12 +1,19 @@
 import { io } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://pingup-backend-1.onrender.com';
+const configuredSocketUrl = import.meta.env.VITE_SOCKET_URL?.trim();
+const isLocalHost = typeof window !== 'undefined'
+  && ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+const SOCKET_URL = configuredSocketUrl || (isLocalHost ? 'http://localhost:3001' : null);
 
 let socket = null;
 let queue = [];
 
 export function getSocket(token) {
+  if (!SOCKET_URL) {
+    throw new Error('VITE_SOCKET_URL is required outside localhost.');
+  }
+
   if (!socket) {
     socket = io(SOCKET_URL, {
       auth: { token },

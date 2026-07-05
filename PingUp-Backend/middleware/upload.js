@@ -15,8 +15,14 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-  const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+  const allowedMimeTypes = [
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'application/pdf', 'text/plain', 'text/markdown', 'text/csv', 'application/json'
+  ];
+  const allowedExtensions = [
+    '.jpg', '.jpeg', '.png', '.gif', '.webp',
+    '.pdf', '.txt', '.md', '.csv', '.json'
+  ];
 
   const isMimeAllowed = allowedMimeTypes.includes(file.mimetype);
   const isExtensionAllowed = allowedExtensions.includes(path.extname(file.originalname).toLowerCase());
@@ -24,7 +30,7 @@ const fileFilter = (req, file, cb) => {
   if (isMimeAllowed && isExtensionAllowed) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only JPEG, PNG, GIF, and WEBP images are allowed.'), false);
+    cb(new Error('Invalid file type. Only images and safe documents are allowed.'), false);
   }
 };
 
@@ -34,14 +40,39 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
-async function checkFileSignature(filePath) {
+async function checkFileSignature(filePath, originalName) {
   let fileHandle;
   try {
     fileHandle = await fs.promises.open(filePath, 'r');
+    const extension = path.extname(originalName).toLowerCase();
+    const textExtensions = ['.txt', '.md', '.csv', '.json'];
+
+    if (textExtensions.includes(extension)) {
+      const stat = await fileHandle.stat();
+      const readSize = Math.min(stat.size, 4096);
+      if (readSize === 0) return true;
+
+      const buffer = Buffer.alloc(readSize);
+      await fileHandle.read(buffer, 0, readSize, 0);
+
+      if (extension === '.json') {
+        const content = buffer.toString('utf8').trim();
+        if (!content.startsWith('{') && !content.startsWith('[')) return false;
+      }
+
+      return !buffer.includes(0x00);
+    }
+
     const buffer = Buffer.alloc(12);
     const { bytesRead } = await fileHandle.read(buffer, 0, 12, 0);
 
     if (bytesRead < 4) return false;
+
+    // PDF: %PDF
+    if (extension === '.pdf') {
+      return buffer[0] === 0x25 && buffer[1] === 0x50
+        && buffer[2] === 0x44 && buffer[3] === 0x46;
+    }
 
     // JPEG: FF D8 FF
     if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) return true;

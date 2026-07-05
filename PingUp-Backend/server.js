@@ -5,65 +5,8 @@ const { Server } = require('socket.io');
 const { createAdapter } = require('@socket.io/redis-adapter');
 const cors = require('cors');
 const mongoose = require('mongoose');
-const jwt = require('jsonwebtoken');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const crypto = require('crypto');
 
-// Image upload setup
-const uploadDir = path.join(__dirname, '..', 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const base = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, '');
-    const randomSuffix = crypto.randomBytes(4).toString('hex');
-    cb(null, `${Date.now()}-${randomSuffix}-${base}${ext}`);
-  },
-});
-
-/**
- * Filter uploaded files based on MIME type and file extension.
- * 
- * Non-obvious decisions:
- * 1. Double validation: checks both content-type (mimetype) and file extension to mitigate
- *    malicious extension renaming bypasses (e.g. uploading .html disguised as .png).
- * 2. Whitelist approach: restricts uploads strictly to safe image assets and documents
- *    to prevent Cross-Site Scripting (XSS) via HTML uploads or Remote Code Execution (RCE) in public static directories.
- */
-const fileFilter = (req, file, cb) => {
-  const allowedMimeTypes = [
-    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-    'application/pdf', 'text/plain', 'text/markdown', 'text/csv', 'application/json'
-  ];
-  const allowedExtensions = [
-    '.jpg', '.jpeg', '.png', '.gif', '.webp',
-    '.pdf', '.txt', '.md', '.csv', '.json'
-  ];
-
-  const isMimeAllowed = allowedMimeTypes.includes(file.mimetype);
-  const isExtensionAllowed = allowedExtensions.includes(path.extname(file.originalname).toLowerCase());
-
-  if (isMimeAllowed && isExtensionAllowed) {
-    cb(null, true);
-  } else {
-    cb(new Error('Invalid file type. Only Images and safe Documents (PDF, TXT, MD, CSV, JSON) are allowed.'), false);
-  }
-};
-
-const upload = multer({ 
-  storage, 
-  fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
-});
-
-const { pubClient, subClient, redisClient, redisReady } = require('./config/redis');
-const { messageQueue } = require('./services/messageQueue');
-
-const User = require('./models/User');
+const { pubClient, subClient, redisReady } = require('./config/redis');
 const Room = require('./models/Room');
 const { uploadDir } = require('./middleware/upload');
 
@@ -102,7 +45,7 @@ app.use(
     })
 );
 app.use(express.json());
-// Serve uploaded files securely
+// Serve uploads without allowing browsers to interpret active content.
 app.use('/uploads', (req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'none'");
@@ -282,81 +225,8 @@ async function evictUnauthorizedSockets(room) {
 
     const allowedSet = new Set(room.allowedUsers.map(id => id.toString()));
 
-    for (const s of allSockets) {
-        const user = s.data?.user ?? s.user;
-        const isOwnerOrAdmin =
-            user?.role === ROLES.OWNER || user?.role === ROLES.ADMIN;
-        if (isOwnerOrAdmin) continue; // owners/admins always keep access
-
-        const isAllowed = allowedSet.has(user?.id?.toString());
-        if (!isAllowed) {
-            // ✅ Leave BOTH room identifiers so no messages leak through
-            s.leave(roomIdStr);
-            s.leave(room.name);
-            s.emit('channel:kicked', {
-                channelId: roomIdStr,
-                reason: 'This channel has been made private.',
-            });
-        }
-    }
-}
-
-async function broadcastStructure() {
-    const rooms = await Room.find().sort({ category: 1, order: 1, createdAt: 1 });
-    const categoryMap = new Map();
-    for (const r of rooms) {
-        const catKey = r.category || 'general';
-        if (!categoryMap.has(catKey))
-            categoryMap.set(catKey, { id: `cat-${catKey}`, name: catKey, channels: [] });
-        categoryMap.get(catKey).channels.push(roomToChannel(r));
-    }
-    io.emit('structure:update', [...categoryMap.values()]);
-}
-
-// ─── Server Settings helpers ──────────────────────────────────────
-async function getServerSetting(key, defaultValue) {
-    try {
-        const setting = await ServerSettings.findOne({ key });
-        return setting ? setting.value === true : defaultValue;
-    } catch {
-        return defaultValue;
-    }
-}
-
-async function broadcastSettings() {
-    const allowUserChannelCreation = await getServerSetting('allowUserChannelCreation', false);
-    io.emit('settings:update', { allowUserChannelCreation });
-}
-
-function roomToChannel(r) {
-    return {
-        id: r._id.toString(),
-        name: r.name,
-        description: r.description,
-        emoji: r.emoji || '💬',
-        category: r.category,
-        isPrivate: r.isPrivate || false,
-        isReadOnly: r.isReadOnly || false,
-        isLocked: r.isLocked || false,
-        isVoice: r.isVoice || false,
-        allowedUsers: r.allowedUsers?.map(id => id.toString()) || [],
-        pinnedMessages: r.pinnedMessages?.map(id => id.toString()) || [],
-    };
-}
-
-// ─── Auth helper ──────────────────────────────────────────────────
-function authHeader(req, res) {
-    const authHeaderVal = req.headers.authorization;
-    if (!authHeaderVal || !authHeaderVal.startsWith('Bearer ')) {
-        res.status(401).json({ error: 'Unauthorized' });
-        return null;
-    }
-    const token = authHeaderVal.slice('Bearer '.length).trim();
-    if (!token) { res.status(401).json({ error: 'Unauthorized' }); return null; }
-    const decoded = verifyToken(token);
-    if (!decoded) { res.status(401).json({ error: 'Invalid token' }); return null; }
-    return decoded;
-}
+// Socket.IO
+initializeSockets(io);
 
 // ─── Seed Default Rooms ───────────────────────────────────────────
 async function seedRooms() {

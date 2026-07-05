@@ -18,6 +18,12 @@ const {
 
 const MAX_MESSAGE_LENGTH = 2000;
 
+function leaveCurrentDM(socket) {
+    if (!socket.currentDM) return;
+    socket.leave(`dm:${socket.currentDM}`);
+    socket.currentDM = null;
+}
+
 function setupHandlers(io, socket) {
     socket.on('room:join', safeSocketHandler(socket, 'room:join', async ({ roomName }) => {
         const room = await Room.findOne({ name: roomName });
@@ -26,6 +32,7 @@ function setupHandlers(io, socket) {
             const allowed = room.allowedUsers.map(id => id.toString()).includes(socket.user.id);
             if (!allowed) return socket.emit('error:permission', 'This channel is private.');
         }
+        leaveCurrentDM(socket);
         ;[...socket.rooms].forEach(r => { if (r !== socket.id) socket.leave(r); });
         socket.join(roomName);
         socket.currentRoom = roomName;
@@ -62,6 +69,7 @@ function setupHandlers(io, socket) {
             const allowed = room.allowedUsers.map(id => id.toString()).includes(socket.user.id);
             if (!allowed) return socket.emit('error:permission', 'This channel is private.');
         }
+        leaveCurrentDM(socket);
         ;[...socket.rooms].forEach(r => { if (r !== socket.id) socket.leave(r); });
         socket.join(channelId);
         socket.currentRoom = room.name;
@@ -357,6 +365,7 @@ function setupHandlers(io, socket) {
             text: trimmed,
             editedAt: updatedMsg.editedAt,
             hasEditHistory: updatedMsg.editHistory.length > 0,
+            username: updatedMsg.username,
         };
 
         const bc = channelId ? io.to(channelId) : io.to(rName);
@@ -502,6 +511,9 @@ function setupHandlers(io, socket) {
 
     socket.on('dm:join', safeSocketHandler(socket, 'dm:join', async ({ otherUserId }) => {
         const convId = [socket.user.id, otherUserId].sort().join('_');
+        if (socket.currentDM && socket.currentDM !== convId) {
+            leaveCurrentDM(socket);
+        }
         socket.join(`dm:${convId}`);
         socket.currentDM = convId;
         await DirectMessage.updateMany(
@@ -509,8 +521,20 @@ function setupHandlers(io, socket) {
             { read: true }
         );
         const otherSocket = [...io.sockets.sockets.values()].find(s => s.user?.id === otherUserId);
-        if (otherSocket) otherSocket.emit('dm:read', { conversationId: convId });
+        if (otherSocket) {
+            otherSocket.emit('dm:read', {
+                conversationId: convId,
+                readerId: String(socket.user.id),
+            });
+        }
     }, 'Failed to open direct message.'));
+
+    socket.on('dm:leave', ({ otherUserId } = {}) => {
+        if (!otherUserId) return;
+        const convId = [socket.user.id, otherUserId].sort().join('_');
+        socket.leave(`dm:${convId}`);
+        if (socket.currentDM === convId) socket.currentDM = null;
+    });
 
     socket.on('dm:send', safeSocketHandler(socket, 'dm:send', async ({ toUserId, text, clientId }, callback) => {
         try {
@@ -546,10 +570,27 @@ function setupHandlers(io, socket) {
             }
 
             const payload = {
-                id: msg._id.toString(), senderId: socket.user.id, senderUsername: socket.user.username,
-                senderRole: socket.user.role, text, timestamp: msg.createdAt, read: false, clientId
+                id: msg._id.toString(), conversationId: convId, senderId: socket.user.id,
+                senderUsername: socket.user.username, senderRole: socket.user.role,
+                text, timestamp: msg.createdAt, read: msg.read || false, clientId
             }
+
+            const receiverViewingChat = [...io.sockets.sockets.values()].some(
+                s => String(s.user?.id) === String(toUserId) && s.currentDM === convId
+            );
+            if (receiverViewingChat && !msg.read) {
+                msg.read = true;
+                await msg.save();
+                payload.read = true;
+            }
+
             io.to(`dm:${convId}`).emit('dm:message', payload);
+            if (receiverViewingChat) {
+                io.to(`dm:${convId}`).emit('dm:read', {
+                    conversationId: convId,
+                    readerId: String(toUserId),
+                });
+            }
             if (typeof callback === 'function') callback({ status: 'success', id: msg._id.toString() });
         } catch (err) {
             if (typeof callback === 'function') callback({ error: 'Server error', status: 'failed' });

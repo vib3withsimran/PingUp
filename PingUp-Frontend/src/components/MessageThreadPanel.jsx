@@ -1,3 +1,5 @@
+import { formatRelativeTime } from '../utils/formatRelativeTime';
+
 export default function MessageThreadPanel({
   selectedThread,
   onOpenThread,
@@ -49,7 +51,9 @@ export default function MessageThreadPanel({
             <div className="msg-thread-reply-user">
               {reply.username}
               {reply.editedAt && (
-                <span className="msg-edited-tag" title="Edited">✏️ edited</span>
+                <span className="msg-edited-tag" title={`Edited ${new Date(reply.editedAt).toLocaleString()}`}>
+                  ✏️ edited {formatRelativeTime(reply.editedAt)}
+                </span>
               )}
             </div>
 

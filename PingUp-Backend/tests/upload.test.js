@@ -119,7 +119,7 @@ test('Image Upload Integration Test Suite', async (t) => {
     const data = await res.json();
 
     assert.equal(res.status, 400);
-    assert.equal(data.error, 'Invalid file type. Only JPEG, PNG, GIF, and WEBP images are allowed.');
+    assert.equal(data.error, 'Invalid file type. Only images and safe documents are allowed.');
   });
 
   await t.test('POST /api/upload - rejects non-image MIME types disguised with image extension', async () => {
@@ -138,7 +138,7 @@ test('Image Upload Integration Test Suite', async (t) => {
     const data = await res.json();
 
     assert.equal(res.status, 400);
-    assert.equal(data.error, 'Invalid file type. Only JPEG, PNG, GIF, and WEBP images are allowed.');
+    assert.equal(data.error, 'Invalid file type. Only images and safe documents are allowed.');
   });
 
   await t.test('POST /api/upload - rejects files with spoofed MIME and extension but invalid content signature', async () => {
@@ -157,6 +157,6 @@ test('Image Upload Integration Test Suite', async (t) => {
     const data = await res.json();
 
     assert.equal(res.status, 400);
-    assert.equal(data.error, 'Invalid file content. Uploaded file is not a valid image.');
+    assert.equal(data.error, 'Invalid file content. Uploaded file failed security validation.');
   });
 });
