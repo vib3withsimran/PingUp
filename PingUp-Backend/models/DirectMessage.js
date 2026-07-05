@@ -11,6 +11,12 @@ const directMessageSchema = new mongoose.Schema({
   text:           { type: String, required: true },
   deleted:        { type: Boolean, default: false },
   read:           { type: Boolean, default: false },
+  editReactions: [
+    {
+      emoji: { type: String },
+      users: [{ type: String }]
+    }
+  ],
   clientId:       { type: String, sparse: true, unique: true },
 }, { timestamps: true });
 

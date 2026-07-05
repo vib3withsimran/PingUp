@@ -143,6 +143,13 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
     }, 1200);
   }
 
+  function handleEditReaction(msgId, emoji) {
+    socket?.emit('message:edit:reaction', {
+      messageId: msgId,
+      emoji,
+    });
+  }
+
   function formatTime(ts) {
     return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }

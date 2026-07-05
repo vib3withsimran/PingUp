@@ -419,7 +419,12 @@ function setupHandlers(io, socket) {
     }, 'Failed to react to message.'));
 
     socket.on('message:edit:reaction', safeSocketHandler(socket, 'message:edit:reaction', async ({ messageId, emoji }) => {
-        const message = await Message.findById(messageId);
+        let isDM = false;
+        let message = await Message.findById(messageId);
+        if (!message) {
+            message = await DirectMessage.findById(messageId);
+            isDM = true;
+        }
         if (!message) return socket.emit('error:general', 'Message not found.');
 
         let reaction = message.editReactions.find(r => r.emoji === emoji);
@@ -439,12 +444,19 @@ function setupHandlers(io, socket) {
             }
         }
         await message.save();
-        const updatedMessage = await Message.findById(messageId);
-        const room = await Room.findOne({ name: message.roomName });
-        if (room) {
+        
+        if (isDM) {
+            const updatedMessage = await DirectMessage.findById(messageId);
             const payload = { messageId, editReactions: updatedMessage.editReactions };
-            io.to(room._id.toString()).emit('message:edit:reaction:update', payload);
-            io.to(message.roomName).emit('message:edit:reaction:update', payload);
+            io.to(`dm:${message.conversationId}`).emit('message:edit:reaction:update', payload);
+        } else {
+            const updatedMessage = await Message.findById(messageId);
+            const room = await Room.findOne({ name: message.roomName });
+            if (room) {
+                const payload = { messageId, editReactions: updatedMessage.editReactions };
+                io.to(room._id.toString()).emit('message:edit:reaction:update', payload);
+                io.to(message.roomName).emit('message:edit:reaction:update', payload);
+            }
         }
     }, 'Failed to react to edit.'));
 
