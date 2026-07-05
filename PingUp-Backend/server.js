@@ -223,6 +223,14 @@ app.post('/api/upload', requireAuth, (req, res, next) => {
   });
 });
 
+app.use('/api/auth', authRoutes);
+app.use('/api/users', usersRoutes);
+app.use('/api', channelsRoutes);
+app.use('/api/dm', dmRoutes);
+app.use('/api/messages', messagesRoutes);
+app.use('/api/search', searchRoutes);
+
+initializeSockets(io);
 
 // ─── Role Helpers ──────────────────────────────────────────────────
 function rollRole() {
