@@ -592,7 +592,7 @@ function setupHandlers(io, socket) {
                     msg.read = true;
                     await msg.save();
                     payload.read = true;
-                    socket.emit('dm:read', { conversationId: convId });
+                    socket.emit('dm:read', { conversationId: convId, readerId: String(toUserId) });
                 } else {
                     otherSocket.emit('dm:notification', {
                         fromId: socket.user.id,
