@@ -743,6 +743,9 @@ async function processCommand(socket, roomName, text) {
             //  matches the existing /kick, /reroll, /ban pattern).
             const targetUser = await User.findOne({ username: targetName });
             if (!targetUser) return err('User not found.');
+            if (targetUser.role === ROLES.ADMIN)
+                return err('Cannot change the admin role.');
+            await User.updateOne({ _id: targetUser._id }, { role: newRole });
             const targetSockets = [...io.sockets.sockets.values()].filter(s => s.user?.id === targetUser._id.toString());
             for (const ls of targetSockets) { ls.user.role = newRole; ls.emit('role:updated', { role: newRole }); }
             await broadcastUserList();
@@ -1411,7 +1414,7 @@ replyCount: 0, imageUrl: imageUrl || null,
         if (!['owner', 'moderator'].includes(socket.user.role))
             return socket.emit('error:permission', 'Insufficient permissions.');
         const target = await User.findById(targetId);
-        if (!target || target.role === ROLES.OWNER) return;
+        if (!target || target.role === ROLES.ADMIN) return;
         const targetSockets = [...io.sockets.sockets.values()].filter(s => s.user?.id === targetId);
         for (const ts of targetSockets) { ts.emit('kicked', { by: socket.user.username }); ts.disconnect(true); }
         io.emit('room:notification', { text: `👢 ${target.username} kicked`, type: 'system' });
