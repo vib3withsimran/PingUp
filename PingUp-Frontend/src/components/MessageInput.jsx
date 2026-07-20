@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import '../styles/MessageInput.css';
 import { apiFetch } from '../api';
 import { useDraftMessage } from '../hooks/useDraftMessage';
+import VoiceRecorder from './VoiceRecorder';
 
 const ALLOWED_FILE_TYPES = [
   'image/jpeg', 'image/png', 'image/webp', 'image/gif',
@@ -26,6 +27,7 @@ export default function MessageInput({
   const [imageFile, setImageFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [imageError, setImageError] = useState(null);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
 
   
   const typingRef = useRef(false);
@@ -100,6 +102,32 @@ export default function MessageInput({
     setTimeout(() => inputRef.current?.focus(), 0);
   }, [text, imageFile, onSend, onTypingStop, clearDraft, token]);
 
+  const handleAudioRecorded = async (audioFile) => {
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', audioFile);
+    try {
+      const res = await apiFetch('/api/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok || (!data?.audioUrl && !data?.fileUrl && !data?.url)) {
+        throw new Error('Audio upload failed');
+      }
+      const audioUrl = data.audioUrl || data.fileUrl || data.url;
+      onSend(text.trim(), null, audioUrl);
+      clearDraft();
+      setShowVoiceRecorder(false);
+    } catch (err) {
+      console.error(err);
+      alert('Voice note upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -154,6 +182,14 @@ export default function MessageInput({
         <p className="image-error-text">{imageError}</p>
       )}
 
+      {showVoiceRecorder && (
+        <VoiceRecorder
+          onAudioRecorded={handleAudioRecorded}
+          onCancel={() => setShowVoiceRecorder(false)}
+          disabled={isDisabled || uploading}
+        />
+      )}
+
       {imagePreview && (
         <div style={{ padding: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
           {imageFile?.type?.startsWith('image/') ? (
@@ -190,8 +226,21 @@ export default function MessageInput({
         style={{ display: 'none' }}
         disabled={isDisabled}
       />
+
+      <button
+        type="button"
+        className="msg-toolbar-btn"
+        onClick={() => setShowVoiceRecorder(prev => !prev)}
+        disabled={isDisabled}
+        title={showVoiceRecorder ? "Close Voice Note recorder" : "Record Voice Note"}
+        aria-label="Record Voice Note"
+        style={{ fontSize: '16px', padding: '0 8px', background: 'none', border: 'none', cursor: 'pointer', color: showVoiceRecorder ? '#ed4245' : '#666' }}
+      >
+        🎤
+      </button>
       
       <button
+        type="button"
         className="msg-toolbar-btn"
         onClick={() => fileInputRef.current?.click()}
         disabled={isDisabled}

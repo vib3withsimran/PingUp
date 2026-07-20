@@ -17,11 +17,13 @@ const storage = multer.diskStorage({
 const fileFilter = (req, file, cb) => {
   const allowedMimeTypes = [
     'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-    'application/pdf', 'text/plain', 'text/markdown', 'text/csv', 'application/json'
+    'application/pdf', 'text/plain', 'text/markdown', 'text/csv', 'application/json',
+    'audio/webm', 'audio/ogg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/m4a', 'audio/aac', 'audio/mpeg', 'audio/mp3', 'video/webm'
   ];
   const allowedExtensions = [
     '.jpg', '.jpeg', '.png', '.gif', '.webp',
-    '.pdf', '.txt', '.md', '.csv', '.json'
+    '.pdf', '.txt', '.md', '.csv', '.json',
+    '.webm', '.ogg', '.wav', '.mp3', '.m4a', '.aac', '.mp4'
   ];
 
   const isMimeAllowed = allowedMimeTypes.includes(file.mimetype);
@@ -30,14 +32,14 @@ const fileFilter = (req, file, cb) => {
   if (isMimeAllowed && isExtensionAllowed) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only images and safe documents are allowed.'), false);
+    cb(new Error('Invalid file type. Only images, audio recordings, and safe documents are allowed.'), false);
   }
 };
 
 const upload = multer({ 
   storage, 
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
 async function checkFileSignature(filePath, originalName) {
@@ -95,6 +97,37 @@ async function checkFileSignature(filePath, originalName) {
     if (bytesRead >= 12 &&
         buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
         buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) {
+      return true;
+    }
+
+    // Ogg: OggS (0x4F, 0x67, 0x67, 0x53)
+    if (buffer[0] === 0x4F && buffer[1] === 0x67 && buffer[2] === 0x67 && buffer[3] === 0x53) {
+      return true;
+    }
+
+    // WebM / EBML: 1A 45 DF A3
+    if (buffer[0] === 0x1A && buffer[1] === 0x45 && buffer[2] === 0xDF && buffer[3] === 0xA3) {
+      return true;
+    }
+
+    // WAV: RIFF at 0..3
+    if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46) {
+      return true;
+    }
+
+    // MP3: ID3 (0x49, 0x44, 0x33) or frame sync (0xFF, 0xE0+)
+    if ((buffer[0] === 0x49 && buffer[1] === 0x44 && buffer[2] === 0x33) ||
+        (buffer[0] === 0xFF && (buffer[1] & 0xE0) === 0xE0)) {
+      return true;
+    }
+
+    // MP4 / M4A: ftyp at bytes 4..7
+    if (bytesRead >= 8 && buffer[4] === 0x66 && buffer[5] === 0x74 && buffer[6] === 0x79 && buffer[7] === 0x70) {
+      return true;
+    }
+
+    // AAC: sync word 0xFFF or ID3
+    if (buffer[0] === 0xFF && (buffer[1] & 0xF0) === 0xF0) {
       return true;
     }
 

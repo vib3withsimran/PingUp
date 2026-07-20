@@ -25,23 +25,25 @@ function emitWithRetry(socket, event, data, callback) {
 
 export default function DMChat({ currentUser, otherUser, token, socket, onClose }) {
   const [messages, setMessages]       = useState([]);
-  const { text, setText, clearDraft } = useDraftMessage('dm', otherUser?.id);
   const [typing, setTyping]           = useState(false);
   const [isTyping, setIsTyping]       = useState(false);
   const [showSearch, setShowSearch]   = useState(false);
-  const bottomRef                     = useRef(null);
-  const typingTimeout                 = useRef(null);
-  const inputRef                      = useRef(null);
-
-  // Auto-focus input when opening DM (removed unnecessary setTimeout)
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, [otherUser?.id]);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
 
   const otherUserId = otherUser?.id;
   const currentUserId = currentUser?.id;
-  const currentUsername = currentUser?.username;
   const dmId = currentUser && otherUser ? [currentUser.id, otherUser.id].sort().join('_') : null;
+
+  const { text, setText, clearDraft } = useDraftMessage('dm', dmId);
+
+  const bottomRef = useRef(null);
+  const inputRef = useRef(null);
+  const typingTimeout = useRef(null);
+
+  // Auto-focus input when opening DM
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [otherUser?.id]);
 
   // Load history + join DM room
   useEffect(() => {
@@ -71,42 +73,34 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
         return [...prev, msg];
       });
     };
-    const onTyping = ({ username, typing }) => {
-      if (username !== currentUsername) setIsTyping(typing);
-    };
-    const onRead = ({ conversationId: readConversationId, readerId }) => {
-      if (readConversationId !== conversationId || !readerId) return;
-      setMessages(prev => prev.map(m =>
-        String(m.senderId) !== String(readerId) ? { ...m, read: true } : m
-      ));
-    };
 
-    const onDisconnect = () => setIsTyping(false);
+    const onTyping = ({ username, typing }) => {
+      if (username === otherUser?.username) {
+        setIsTyping(typing);
+      }
+    };
 
     socket.on('dm:message', onMessage);
     socket.on('dm:typing', onTyping);
-    socket.on('dm:read', onRead);
-    socket.on('disconnect', onDisconnect);
 
     return () => {
       controller.abort();
       socket.off('dm:message', onMessage);
       socket.off('dm:typing', onTyping);
-      socket.off('dm:read', onRead);
-      socket.off('disconnect', onDisconnect);
       socket.emit('dm:leave', { otherUserId });
     };
-  }, [currentUserId, otherUserId, token, socket, currentUsername]);
+  }, [currentUserId, otherUserId, token, socket, otherUser?.username]);
 
-  // Auto scroll
+  // Auto-scroll on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
   function handleSend(e) {
-    e.preventDefault();
+    e?.preventDefault();
     const trimmed = text.trim();
     if (!trimmed) return;
+
     const clientId = generateClientId();
 
     const optMsg = {
@@ -116,19 +110,18 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
       senderRole: currentUser.role,
       text: trimmed,
       timestamp: Date.now(),
-      status: 'sending' // <-- New status field
+      status: 'sending'
     };
 
     setMessages(prev => [...prev, optMsg]);
     clearDraft();
     
-    // Maintain focus after sending (removed unnecessary setTimeout)
     inputRef.current?.focus();
 
     emitWithRetry(socket, 'dm:send', {
       toUserId: otherUser.id,
       text: trimmed,
-      clientId // ← Send to backend for idempotency
+      clientId
     }, (res) => {
       if (res.error) {
         setMessages(prev => prev.map(m =>
@@ -145,6 +138,54 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
     setTyping(false);
   }
 
+  const handleAudioRecorded = async (audioFile) => {
+    const clientId = generateClientId();
+    const tempUrl = URL.createObjectURL(audioFile);
+    const optMsg = {
+      id: clientId,
+      senderId: currentUser.id,
+      senderUsername: currentUser.username,
+      senderRole: currentUser.role,
+      text: '',
+      audioUrl: tempUrl,
+      timestamp: Date.now(),
+      status: 'sending'
+    };
+    setMessages(prev => [...prev, optMsg]);
+    setShowVoiceRecorder(false);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', audioFile);
+      const res = await apiFetch('/api/upload', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok || (!data?.audioUrl && !data?.fileUrl && !data?.url)) {
+        throw new Error('Upload failed');
+      }
+      const audioUrl = data.audioUrl || data.fileUrl || data.url;
+
+      emitWithRetry(socket, 'dm:send', {
+        toUserId: otherUser.id,
+        text: '',
+        audioUrl,
+        clientId
+      }, (resp) => {
+        if (resp.error) {
+          setMessages(prev => prev.map(m => m.id === clientId ? { ...m, status: 'failed' } : m));
+        } else {
+          setMessages(prev => prev.map(m => m.id === clientId ? { ...m, id: resp.id || m.id, audioUrl, status: 'sent' } : m));
+        }
+      });
+    } catch (err) {
+      console.error(err);
+      setMessages(prev => prev.map(m => m.id === clientId ? { ...m, status: 'failed' } : m));
+    }
+  };
+
   function handleChange(e) {
     setText(e.target.value);
     if (!typing) {
@@ -158,14 +199,6 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
     }, 1200);
   }
 
-  // eslint-disable-next-line no-unused-vars
-  function handleEditReaction(msgId, emoji) {
-    socket?.emit('message:edit:reaction', {
-      messageId: msgId,
-      emoji,
-    });
-  }
-
   function formatTime(ts) {
     return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
@@ -174,7 +207,6 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
 
   return (
     <div className="dm-chat-panel">
-
       {/* Header */}
       <div className="dm-chat-header">
         <div className={`dm-chat-avatar avatar-${otherUser.role}`}>
@@ -230,7 +262,17 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
                   </span>
                 )}
                 <div className={`dm-msg-bubble ${isMe ? 'bubble-mine' : 'bubble-theirs'}`}>
-                  <MarkdownMessage content={msg.text} />
+                  {msg.text && <MarkdownMessage content={msg.text} />}
+                  {msg.audioUrl && (
+                    <AudioPlayer src={msg.audioUrl} title={`Voice note from ${msg.senderUsername || 'user'}`} />
+                  )}
+                  {msg.imageUrl && (
+                    <img
+                      src={msg.imageUrl}
+                      alt="shared image"
+                      style={{ display: 'block', maxWidth: '250px', maxHeight: '250px', marginTop: '6px', borderRadius: '8px' }}
+                    />
+                  )}
                 </div>
                 <div className="dm-msg-meta">
                   <span className="dm-msg-time">{formatTime(msg.timestamp)}</span>
@@ -239,7 +281,6 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
                       {msg.status === 'sending' && '🕒'}
                       {msg.status === 'failed' && '⚠️ Failed'}
                       {msg.status === 'sent' && (msg.read ? '✓✓' : '✓')}
-                      {/* Fallback for old messages without status */}
                       {!msg.status && (msg.read ? '✓✓' : '✓')}
                     </span>
                   )}
@@ -268,6 +309,15 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
         <div ref={bottomRef} />
       </div>
 
+      {showVoiceRecorder && (
+        <div style={{ padding: '0 12px' }}>
+          <VoiceRecorder
+            onAudioRecorded={handleAudioRecorded}
+            onCancel={() => setShowVoiceRecorder(false)}
+          />
+        </div>
+      )}
+
       {/* Input */}
       <form className="dm-chat-input-row" onSubmit={handleSend}>
         <input
@@ -276,6 +326,23 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
           onChange={handleChange}
           placeholder={`Message ${otherUser.username} (Markdown supported)...`}
         />
+        <button
+          type="button"
+          className="dm-mic-btn"
+          onClick={() => setShowVoiceRecorder(prev => !prev)}
+          title={showVoiceRecorder ? "Close Voice Note recorder" : "Record Voice Note"}
+          aria-label="Record Voice Note"
+          style={{
+            background: 'none',
+            border: 'none',
+            fontSize: '16px',
+            cursor: 'pointer',
+            padding: '0 6px',
+            color: showVoiceRecorder ? '#ed4245' : '#888'
+          }}
+        >
+          🎤
+        </button>
         <button type="submit" disabled={!text.trim()}>➤</button>
       </form>
 

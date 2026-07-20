@@ -19,7 +19,7 @@ const messageQueue = new Queue(queueName, {
 
 // Setup Worker to process queue
 const messageWorker = new Worker(queueName, async (job) => {
-    const { _id, roomName, userId, username, role, text, parentMessageId, imageUrl } = job.data;
+    const { _id, roomName, userId, username, role, text, parentMessageId, imageUrl, audioUrl } = job.data;
     
     try {
         let msg;
@@ -32,7 +32,8 @@ const messageWorker = new Worker(queueName, async (job) => {
                 role,
                 text,
                 parentMessageId,
-                imageUrl
+                imageUrl,
+                audioUrl
             });
         } catch (createErr) {
             if (createErr.code === 11000 || createErr.name === 'MongoError' || createErr.name === 'MongoServerError') {

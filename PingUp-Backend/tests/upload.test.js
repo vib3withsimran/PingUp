@@ -103,6 +103,31 @@ test('Image Upload Integration Test Suite', async (t) => {
     }
   });
 
+  await t.test('POST /api/upload - uploads valid audio webm files successfully', async () => {
+    const formData = new FormData();
+    const webmMagicBytes = Buffer.from([0x1A, 0x45, 0xDF, 0xA3, 0x99, 0x42, 0x86, 0x81, 0x01, 0x42, 0xF7, 0x81]);
+    const blob = new Blob([webmMagicBytes], { type: 'audio/webm' });
+    formData.append('file', blob, 'voice-note.webm');
+
+    const res = await fetch(`${baseUrl}/api/upload`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${validToken}`,
+      },
+      body: formData,
+    });
+    const data = await res.json();
+
+    assert.equal(res.status, 200);
+    assert.ok(data.audioUrl.startsWith('/uploads/'));
+    assert.ok(data.audioUrl.endsWith('.webm'));
+
+    const filePath = path.join(__dirname, '..', '..', data.audioUrl.replace(/^\/+/, ''));
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  });
+
   await t.test('POST /api/upload - rejects non-image extensions (XSS/RCE mitigation)', async () => {
     const formData = new FormData();
     const fileContent = '<h1>Malicious Script</h1>';
@@ -119,7 +144,7 @@ test('Image Upload Integration Test Suite', async (t) => {
     const data = await res.json();
 
     assert.equal(res.status, 400);
-    assert.equal(data.error, 'Invalid file type. Only images and safe documents are allowed.');
+    assert.equal(data.error, 'Invalid file type. Only images, audio recordings, and safe documents are allowed.');
   });
 
   await t.test('POST /api/upload - rejects non-image MIME types disguised with image extension', async () => {
@@ -138,7 +163,7 @@ test('Image Upload Integration Test Suite', async (t) => {
     const data = await res.json();
 
     assert.equal(res.status, 400);
-    assert.equal(data.error, 'Invalid file type. Only images and safe documents are allowed.');
+    assert.equal(data.error, 'Invalid file type. Only images, audio recordings, and safe documents are allowed.');
   });
 
   await t.test('POST /api/upload - rejects files with spoofed MIME and extension but invalid content signature', async () => {

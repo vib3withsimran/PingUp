@@ -8,7 +8,9 @@ const directMessageSchema = new mongoose.Schema({
   senderId:       { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   senderUsername: { type: String, required: true },
   senderRole:     { type: String, required: true },
-  text:           { type: String, required: true },
+  text:           { type: String, required: false, default: '' },
+  imageUrl:       { type: String, default: null },
+  audioUrl:       { type: String, default: null },
   deleted:        { type: Boolean, default: false },
   read:           { type: Boolean, default: false },
   editReactions: [

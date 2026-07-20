@@ -24,6 +24,8 @@ router.get('/:otherUserId', async (req, res) => {
             senderUsername: m.senderUsername,
             senderRole: m.senderRole,
             text: m.text,
+            imageUrl: m.imageUrl || null,
+            audioUrl: m.audioUrl || null,
             timestamp: m.createdAt,
             read: m.read,
         })));
@@ -49,12 +51,13 @@ router.get('/', async (req, res) => {
             const unread = await DirectMessage.countDocuments({
                 conversationId: c._id, senderId: { $ne: myId }, read: false,
             });
+            const lastMsgText = c.lastMessage.audioUrl ? '🎵 Voice note' : (c.lastMessage.imageUrl ? '📷 Photo' : c.lastMessage.text);
             return {
                 conversationId: c._id,
                 otherUser: other
                     ? { id: other._id.toString(), username: other.username, role: other.role, online: other.online }
                     : null,
-                lastMessage: c.lastMessage.text,
+                lastMessage: lastMsgText,
                 lastMessageTime: c.lastMessage.createdAt,
                 unreadCount: unread,
             };

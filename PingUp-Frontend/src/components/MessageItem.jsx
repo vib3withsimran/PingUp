@@ -1,4 +1,5 @@
 import MarkdownMessage from './MarkdownMessage';
+import AudioPlayer from './AudioPlayer';
 import { formatRelativeTime } from '../utils/formatRelativeTime';
 
 export default function MessageItem({
@@ -92,7 +93,10 @@ export default function MessageItem({
           </div>
         ) : (
           <div className="msg-text">
-            <MarkdownMessage content={msg.text} />
+            {msg.text && <MarkdownMessage content={msg.text} />}
+            {msg.audioUrl && (
+              <AudioPlayer src={msg.audioUrl} title={`Voice note from ${msg.username}`} />
+            )}
             {msg.imageUrl && (
               <img
                 src={msg.imageUrl}
